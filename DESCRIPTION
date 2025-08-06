@@ -2,8 +2,9 @@ Package: lasRpipeline
 Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+    person("Francesco", "Pirotti", , "francesco.pirotti@unipd.it", role = c("aut", "cre"))
+Description: provides wrapper functions for parallel processing of typical 
+forestry lidar workflow, from raw point cloud to tree segmentation
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
