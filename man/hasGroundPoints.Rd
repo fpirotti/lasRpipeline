@@ -2,28 +2,27 @@
 % Please edit documentation in R/hasGroundPoints.R
 \name{hasGroundPoints}
 \alias{hasGroundPoints}
-\title{hasGroundPoints will return TRUE if ground class is present in one
-of the files or FALSE if no ground point are found. To make this faster
-some euristics are used, such as check a single file which is the smallest
-but  larger than 1 MB, or the largest file if none are larger than
-1 MB}
+\title{hasGroundPoints}
 \usage{
-hasGroundPoints(f)
+hasGroundPoints(f, verbose = T)
 }
 \arguments{
 \item{f}{file name or character vector with file names to process}
+
+\item{verbose}{if TRUE will provide verbose messages, if FALSE then it will be silent.}
 }
 \value{
 FALSE if no classified ground points are present or
 a numeric with the ratio of points classified as ground in the file
 }
 \description{
-hasGroundPoints will return TRUE if ground class is present in one
+Will return TRUE if ground class is present in one
 of the files or FALSE if no ground point are found. To make this faster
 some euristics are used, such as check a single file which is the smallest
 but  larger than 1 MB, or the largest file if none are larger than
-1 MB
+1 MB.
 }
 \examples{
-# none
+testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
+hasGroundPoints(testFile)
 }
