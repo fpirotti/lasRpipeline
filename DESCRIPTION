@@ -3,10 +3,15 @@ Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
     person("Francesco", "Pirotti", , "francesco.pirotti@unipd.it", role = c("aut", "cre"))
-Description: provides wrapper functions for parallel processing of typical 
-forestry lidar workflow, from raw point cloud to tree segmentation
-License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
-    license
+Description: 
+  Provides wrapper functions to the lasR package 
+  for parallel processing of typical forestry lidar workflow, 
+  from raw point cloud to tree segmentation.
+License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Imports: 
+    grDevices,
+    lasR,
+    terra
