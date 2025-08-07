@@ -4,12 +4,17 @@
 \alias{hasGroundPoints}
 \title{hasGroundPoints}
 \usage{
-hasGroundPoints(f, verbose = T)
+hasGroundPoints(f, verbose = T, progress = TRUE, force = FALSE)
 }
 \arguments{
 \item{f}{file name or character vector with file names to process}
 
 \item{verbose}{if TRUE will provide verbose messages, if FALSE then it will be silent.}
+
+\item{progress}{if TRUE lasR will show progress.}
+
+\item{force}{if TRUE cache will be ignored and overwritten - cache basically
+keeps in memory the}
 }
 \value{
 FALSE if no classified ground points are present or
