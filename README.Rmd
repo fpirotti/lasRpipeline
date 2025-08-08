@@ -5,9 +5,12 @@ Provides wrapper functions for parallel processing using lasR of typical forestr
 Please install [lasR](https://github.com/r-lidar/lasR)
 
 ## Usage
+```{r}
 
-``` r
 if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
+if(!require("devtools"))  install.packages("devtools")
+if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
+# install.packages("devtools")
 
 # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
 
@@ -32,9 +35,7 @@ process<-function(){
 }
 
 
-  if(terra::crs(grid$scottburgan_class)){
-    
-  }
+process()
  
 
 
