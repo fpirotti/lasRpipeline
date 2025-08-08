@@ -22,7 +22,9 @@
 hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
 
   if(verbose) message_log("## Starting function ", cli::style_bold(sys.call()[[1]]) )
-
+  if(inherits(f, "LAScatalog")){
+    f <- f@data$filename
+  }
   fsz <- file.size(f)/1000000 ## file size in MB
 
   mm <- which(fsz > 1 )
@@ -36,8 +38,7 @@ hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
   id <- get_file_id(file)
   hasGround <- get_cache(id)
   if(force || is.null(hasGround)) {
-    if(verbose) message_log("Getting information from a sample file to
- understand if ground class is available and also to check for CRS!" )
+    if(verbose) message_log("Getting information from a sample file to understand if ground class is available and also to check for CRS!" )
     hasGround = lasR::exec( lasR::summarise(), on = file,  progress = progress)
     set_cache(id, hasGround)
   }

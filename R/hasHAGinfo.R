@@ -15,6 +15,9 @@
 hasHAGinfo <- function(f, verbose=T ){
 
   if(verbose) message_log("Starting function ", sys.call()[[1]] )
+  if(inherits(f, "LAScatalog")){
+    f <- f@data$filename
+  }
   fileInfo <- lidR::readLASheader(f[[1]])
   !is.null(fileInfo$Extra_Bytes) &&
     is.element("HAG",

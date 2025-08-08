@@ -44,7 +44,9 @@ get_file_id <- function(filepath) {
 
 # will return list of names of files that were not processed
 list_files_not_processed <- function(f, odir) {
-
+  if(inherits(f, "LAScatalog")){
+    f <- f@data$filename
+  }
   if( any(dir.exists(f)) ){
     f <- list.files(f, pattern= .pkg_cache$laspattern)
   }
