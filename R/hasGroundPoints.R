@@ -21,7 +21,7 @@
 #' hasGroundPoints(testFile)
 hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
 
-  if(verbose) message_log("Starting function ", sys.call()[[1]] )
+  if(verbose) message_log("## Starting function ", cli::style_bold(sys.call()[[1]]) )
 
   fsz <- file.size(f)/1000000 ## file size in MB
 
@@ -40,9 +40,8 @@ hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
  understand if ground class is available and also to check for CRS!" )
     hasGround = lasR::exec( lasR::summarise(), on = file,  progress = progress)
     set_cache(id, hasGround)
-  } else {
-
   }
-  if(verbose) message_log("Finished function ", sys.call()[[1]] )
+
+  if(verbose) message_log("## Finished function ", cli::style_bold(sys.call()[[1]]) )
   (hasGround$npoints_per_class[["2"]])/hasGround$npoints
 }

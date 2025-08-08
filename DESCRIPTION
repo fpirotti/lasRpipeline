@@ -16,6 +16,7 @@ Imports:
     digest,
     grDevices,
     lasR,
+    lidR,
     terra,
     tools
 Depends: 

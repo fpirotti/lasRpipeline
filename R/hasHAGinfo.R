@@ -15,27 +15,9 @@
 hasHAGinfo <- function(f, verbose=T ){
 
   if(verbose) message_log("Starting function ", sys.call()[[1]] )
+  fileInfo <- lidR::readLASheader(f[[1]])
+  !is.null(fileInfo$Extra_Bytes) &&
+    is.element("HAG",
+               names(fileInfo$Extra_Bytes$`Extra Bytes Description`))
 
-  fsz <- file.size(f)/1000000 ## file size in MB
-
-  mm <- which(fsz > 1 )
-  if(length(mm)==0){
-    mm <- which.max(fsz)
-  } else {
-    mm <- which.min(mm)
-  }
-
-  file <- f[[mm]]
-  id <- get_file_id(file)
-  hasGround <- get_cache(id)
-  if(force || is.null(hasGround)) {
-    if(verbose) message_log("Getting information from a sample file to
- understand if ground class is available and also to check for CRS!" )
-    hasGround = lasR::exec( lasR::summarise(), on = file,  progress = progress)
-    set_cache(id, hasGround)
-  } else {
-
-  }
-  if(verbose) message_log("Finished function ", sys.call()[[1]] )
-  (hasGround$npoints_per_class[["2"]])/hasGround$npoints
 }

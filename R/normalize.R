@@ -23,11 +23,13 @@ normalize <- function(f, odir="outdir/norm", force=FALSE, verbose=TRUE){
     dir.create(odir, recursive = TRUE)
   }
 
-  files2process <- check_files_processed(f, odir)
+  files2process <- list_files_not_processed(f, odir)
   if(length(files2process)==0 ) {
-    if(verbose) message_log("All files processed: remove files to reprocess this stage " )
+    if(verbose) message_log("All files processed: remove files in ",
+                            cli::style_underline(odir)," to reprocess this stage " )
     return(files2process)
   }
+
 
   if(verbose) message_log("Processing: ", cli::style_underline(length(files2process)), " files." )
 
@@ -36,5 +38,5 @@ normalize <- function(f, odir="outdir/norm", force=FALSE, verbose=TRUE){
   # }
   pipeline <- lasR::reader() + lasR::hag() +
                                lasR::write_las(ofile = file.path(odir,"*.laz") )
-  lasR::exec(pipeline, on = f, progress=TRUE)
+  lasR::exec(pipeline, on = files2process, progress=TRUE)
 }

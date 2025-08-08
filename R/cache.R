@@ -1,42 +1,52 @@
-.my_cache_env <- new.env(parent = emptyenv())
-laspattern <- "(?i)\\.la(s|z)$"
-tifpattern <- "(?i)\\.tif$"
-odir <-   "output"
-# Set cache
 set_cache <- function(key, value) {
-  assign(key, value, envir = .my_cache_env)
+  assign(key, value, envir = .pkg_cache)
+  saveRDS(as.list(.pkg_cache), file.path(cache_dir, "cache.rds"))
 }
 
-# Get cache
 get_cache <- function(key) {
-  if (exists(key, envir = .my_cache_env)) {
-    get(key, envir = .my_cache_env)
+  if (exists(key, envir = .pkg_cache, inherits = FALSE)) {
+    get(key, envir = .pkg_cache)
   } else {
     NULL
   }
 }
-
-# Clear cache
-clear_cache <- function() {
-  rm(list = ls(envir = .my_cache_env), envir = .my_cache_env)
+get_cache_env <- function() {
+  .pkg_cache
 }
 
+#' get_cache_env_ls
+#' @description
+#' Return some cached info related to point clouds so that they don't have to
+#' be recalculated.
+#'
+#' @returns environment cache of package
+#' @export
+#'
+#' @examples
+#' get_cache_env_ls()
+get_cache_env_ls <- function() {
+  env <- mypkg::get_cache_env()
+  ls(env)
+}
 
+cache_clear <- function() {
+  rm(list = ls(envir = .pkg_cache), envir = .pkg_cache)
+  unlink(file.path(cache_dir, "cache.rds"))
+}
 
 # get file id
 get_file_id <- function(filepath) {
   if (!file.exists(filepath)) stop("File not found.")
-
   info <- file.info(filepath)
   id_string <- paste(filepath, info$size, info$mtime, sep = "_")
   digest::digest(id_string, algo = "sha1")
 }
 
 # will return list of names of files that were not processed
-check_files_processed <- function(f, odir) {
+list_files_not_processed <- function(f, odir) {
 
   if( any(dir.exists(f)) ){
-    f <- list.files(f, pattern=laspattern)
+    f <- list.files(f, pattern= .pkg_cache$laspattern)
   }
 
   if(!dir.exists(odir)){
@@ -45,9 +55,10 @@ check_files_processed <- function(f, odir) {
     return(f)
   }
 
-  f1 <- tools::file_path_sans_ext(list.files(odir, pattern=laspattern))
-  f2 <- tools::file_path_sans_ext(list.files(odir, pattern=tifpattern))
+  f0 <- tools::file_path_sans_ext(basename(f))
+  f1 <- tools::file_path_sans_ext(list.files(odir, pattern=.pkg_cache$laspattern))
+  f2 <- tools::file_path_sans_ext(list.files(odir, pattern=.pkg_cache$tifpattern))
 
-  setdiff(f, union(f2,f1) )
-
+  toProcess <- which(!(f0 %in% union(f2,f1)) )
+  f[toProcess]
 }

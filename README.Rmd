@@ -18,7 +18,7 @@ if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
 ## intermediate steps have already been taken care of and proceed to create a 
 ## canopy fuel and topography 
 f <- list.files("/archivio/shared/geodati/las/fvg", pattern="(?i)\\.la(s|z)$", full.names = T )
-odir <- "/archivio/shared/geodati/las/fvg/outdir"
+odir <- "/archivio/shared/geodati/las/fvg/outdir/norm"
   
 process<-function(){
   if(hasGroundPoints(f) < 0.00000000001){
@@ -28,7 +28,7 @@ process<-function(){
   
   lasR::set_parallel_strategy(lasR::nested(ncores = 4L, ncores2 = 2L))
   message_log("Normalize") 
-  normalize(f)
+  normalize(f, odir)
   message_log("Reference GRID, might be different CRS. ") 
   grid <- terra::rast("../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif")
   
