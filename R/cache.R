@@ -73,7 +73,8 @@ list_files_still_to_process <- function(f, odir, inverse=F) {
   processed <- (f0 %in% union(f2,f1))
   yesProcessed <- which(processed)
   notProcessed <- which(!processed)
-  ret <- ifelse(inverse, yesProcessed, notProcessed)
-  f[ret]
+  ret <-  f[notProcessed]
+  if(inverse) ret <-  f[yesProcessed]
+  ret
 
 }

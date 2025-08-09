@@ -13,11 +13,12 @@ Please install [lasR](https://github.com/r-lidar/lasR),
 ``` r 
 
 if(!require("lidR"))  install.packages("lidR")
+if(!require("terra"))  install.packages("terra")
 if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
 if(!require("devtools"))  install.packages("devtools")
 if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
 # install.packages("devtools")
-if(!require("lidRviewer"))  install.packages('lidRviewer', repos = c('https://r-lidar.r-universe.dev'))
+#if(!require("lidRviewer"))  install.packages('lidRviewer', repos = c('https://r-lidar.r-universe.dev'))
 # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
 
 ## just define input files and output directory - the processing will check if 
@@ -52,30 +53,34 @@ process<-function(){
   cellids <- terra::cells(grid)
   centers <- terra::xyFromCell(grid,cellids)
   
-  points_vect <- terra::vect(centers, type="points",  crs = crs(grid))
-   
-  
-  points_sf <- sf::st_as_sf(points_vect)
+  points_sf <- sf::st_as_sf(as.data.frame(centers), coords = c("x", "y"), crs = crs(grid) )
   
   points_sf_crsPoints <- sf::st_transform(points_sf, lidR::crs(ctg))  
-  
+ 
   points_sf_crsPoints$cellID <- cellids
   
   ctg.norm <- lidR::catalog(normFiles[3:4])
   
   dd <- sf::st_intersects(points_sf_crsPoints, sf::st_union(ctg.norm@data$geometry), sparse =  FALSE)
   
-  points_sf_crsPoints.overlap <-  points_sf_crsPoints[dd,]
+  points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd,]
   
+  points_sf_crsPoints_overlap_coords <- sf::st_coordinates(points_sf_crsPoints_overlap) 
   
   lasR::set_parallel_strategy(lasR::sequential())
   
-  set_lidr_threads(1) ; data.table::setDTthreads(1) # for cran only
+  # set_lidr_threads(1) ; data.table::setDTthreads(1) # for cran only
 
-  metrics <- lidR::plot_metrics(las=ctg.norm, 
-                           func=fuelMetrics, 
-                           geometry=points_sf_crsPoints.overlap,  
-                          radius = 5)
+read = reader_circles(points_sf_crsPoints_overlap_coords[,1], 
+                      points_sf_crsPoints_overlap_coords[,2], 5)
+                      
+metrics = summarise(metrics = c("z_mean", "z_p95",  "count", "HAG_p50" ))
+
+pipeline = read + metrics
+
+ans = exec(pipeline, on = ctg.norm )
+
+                          
 }
 
 # plot(ctg, mapview = TRUE, map.type = "Esri.WorldImagery")
