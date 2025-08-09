@@ -14,18 +14,18 @@ hasGroundPoints(f, verbose = T, progress = TRUE, force = FALSE)
 \item{progress}{if TRUE lasR will show progress.}
 
 \item{force}{if TRUE cache will be ignored and overwritten - cache basically
-keeps in memory the}
+keeps in memory the information of the file.}
 }
 \value{
 FALSE if no classified ground points are present or
 a numeric with the ratio of points classified as ground in the file
 }
 \description{
-Will return TRUE if ground class is present in one
-of the files or FALSE if no ground point are found. To make this faster
-some euristics are used, such as check a single file which is the smallest
-but  larger than 1 MB, or the largest file if none are larger than
-1 MB.
+Will return FALSE if no ground class is present in one
+of the files or number between 0 and 1 with ratio of ground points.
+To make this faster some simple heuristics are used, such as
+checking a single file as it is reasonable to assume that the files come
+from the same processing pipeline.
 }
 \examples{
 testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")

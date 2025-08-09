@@ -11,12 +11,13 @@ Please install [lasR](https://github.com/r-lidar/lasR),
 ## Usage
 
 ``` r 
+
 if(!require("lidR"))  install.packages("lidR")
 if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
 if(!require("devtools"))  install.packages("devtools")
 if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
 # install.packages("devtools")
-
+if(!require("lidRviewer"))  install.packages('lidRviewer', repos = c('https://r-lidar.r-universe.dev'))
 # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
 
 ## just define input files and output directory - the processing will check if 
@@ -26,7 +27,6 @@ f <- list.files("/archivio/shared/geodati/las/fvg/tarvisio/", pattern="(?i)\\.la
 odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm"
 
 ctg <- lidR::catalog(f)
-# sf::write_sf(ctg["Min.Z"], "tmp.gpkg")
 # plot(ctg)
 process<-function(){
   if(hasGroundPoints(ctg) < 0.00000000001){
@@ -41,23 +41,41 @@ process<-function(){
        with = list(progress = TRUE, 
                      ncores = min(length(ctg@data$filename), 
                                   as.integer(half_cores()/2) ) ) )
+                                  
   normFiles <- normalize(ctg, odir)
+   
   message_log("Reference GRID, might be different CRS. ") 
+  
   grid <- terra::rast("../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif")
   
-  grid[values(grid,mat=F) < 180 | values(grid,mat=F) > 190] <- NA
+  grid[values(grid,mat=F) < 180 | terra::values(grid,mat=F) > 190] <- NA
   cellids <- terra::cells(grid)
   centers <- terra::xyFromCell(grid,cellids)
+  
   points_vect <- terra::vect(centers, type="points",  crs = crs(grid))
    
   
   points_sf <- sf::st_as_sf(points_vect)
+  
   points_sf_crsPoints <- sf::st_transform(points_sf, lidR::crs(ctg))  
+  
   points_sf_crsPoints$cellID <- cellids
   
-  points_sf_crsPoints.overlap <-  points_sf_crsPoints[sf::st_intersects(points_sf_crsPoints[1:10,], ctg@data$geometry, sparse =  FALSE),]
+  ctg.norm <- lidR::catalog(normFiles[3:4])
   
-  metrics <- plot_metrics(ctg, .stdmetrics_z, points_sf_crsPoints, radius = 5)
+  dd <- sf::st_intersects(points_sf_crsPoints, sf::st_union(ctg.norm@data$geometry), sparse =  FALSE)
+  
+  points_sf_crsPoints.overlap <-  points_sf_crsPoints[dd,]
+  
+  
+  lasR::set_parallel_strategy(lasR::sequential())
+  
+  set_lidr_threads(1) ; data.table::setDTthreads(1) # for cran only
+
+  metrics <- lidR::plot_metrics(las=ctg.norm, 
+                           func=fuelMetrics, 
+                           geometry=points_sf_crsPoints.overlap,  
+                          radius = 5)
 }
 
 # plot(ctg, mapview = TRUE, map.type = "Esri.WorldImagery")

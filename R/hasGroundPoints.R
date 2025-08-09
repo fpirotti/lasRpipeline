@@ -1,16 +1,16 @@
 #' hasGroundPoints
 #' @description
-#' Will return TRUE if ground class is present in one
-#' of the files or FALSE if no ground point are found. To make this faster
-#' some euristics are used, such as check a single file which is the smallest
-#' but  larger than 1 MB, or the largest file if none are larger than
-#' 1 MB.
+#' Will return FALSE if no ground class is present in one
+#' of the files or number between 0 and 1 with ratio of ground points.
+#' To make this faster some simple heuristics are used, such as
+#' checking a single file as it is reasonable to assume that the files come
+#' from the same processing pipeline.
 #'
 #' @param f file name or character vector with file names to process
 #' @param verbose if TRUE will provide verbose messages, if FALSE then it will be silent.
 #' @param progress if TRUE lasR will show progress.
 #' @param force if TRUE cache will be ignored and overwritten - cache basically
-#' keeps in memory the
+#' keeps in memory the information of the file.
 #'
 #' @returns FALSE if no classified ground points are present or
 #' a numeric with the ratio of points classified as ground in the file
