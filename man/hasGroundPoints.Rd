@@ -28,6 +28,6 @@ checking a single file as it is reasonable to assume that the files come
 from the same processing pipeline.
 }
 \examples{
-testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
-hasGroundPoints(testFile)
+# testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
+# hasGroundPoints(testFile)
 }

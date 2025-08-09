@@ -16,7 +16,7 @@ normalize(f, odir = "outdir/norm", force = FALSE, verbose = TRUE)
 \item{verbose}{verbose output messages in logs}
 }
 \value{
-list of files normalized with full path, that can be used for
+list of normalized files with full path, that can be used for
 successive processing.
 }
 \description{

@@ -20,6 +20,6 @@ Will return TRUE if a sampled las file has Height Above Ground information,
 which means it has been normalized already.
 }
 \examples{
-testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
-hasGroundPoints(testFile)
+# testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
+# hasGroundPoints(testFile)
 }

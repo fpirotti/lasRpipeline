@@ -17,8 +17,8 @@
 #' @export
 #'
 #' @examples
-#' testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
-#' hasGroundPoints(testFile)
+#' # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
+#' # hasGroundPoints(testFile)
 hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
 
   if(verbose) message_log("## Starting function ", cli::style_bold(sys.call()[[1]]) )

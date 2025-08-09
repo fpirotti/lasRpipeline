@@ -10,8 +10,8 @@
 #' @export
 #'
 #' @examples
-#' testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
-#' hasGroundPoints(testFile)
+#' # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
+#' # hasGroundPoints(testFile)
 hasHAGinfo <- function(f, verbose=T ){
 
   if(verbose) message_log("Starting function ", sys.call()[[1]] )

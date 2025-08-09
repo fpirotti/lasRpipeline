@@ -17,6 +17,8 @@ Imports:
     grDevices,
     lasR,
     lidR,
+    MASS,
+    stats,
     terra,
     tools
 Depends: 
