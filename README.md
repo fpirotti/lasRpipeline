@@ -8,6 +8,10 @@ canopy fuel mapping to support fire behaviour modelling for
 Please install [lasR](https://github.com/r-lidar/lasR), 
 [lidR](https://github.com/r-lidar/lidR)
 
+NB - this pipeline assumes you have a classified point cloud, without
+any noise points, so please use responsible and provide a clean and 
+classified point cloud.
+
 ## Usage
 
 ``` r 
@@ -71,10 +75,11 @@ process<-function(){
   
   # set_lidr_threads(1) ; data.table::setDTthreads(1) # for cran only
 
-read = reader_circles(points_sf_crsPoints_overlap_coords[,1], 
-                      points_sf_crsPoints_overlap_coords[,2], 5)
+read = reader_circles(points_sf_crsPoints_overlap_coords[1:4,1], 
+                      points_sf_crsPoints_overlap_coords[1:4,2], 5)
                       
-metrics = summarise(metrics = c("z_mean", "z_p95",  "count", "HAG_p50" ))
+metrics =  callback(fuelMetrics, expose = "xyzcE", 
+                    drop_buffer = F, no_las_update = F)
 
 pipeline = read + metrics
 
