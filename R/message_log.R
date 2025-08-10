@@ -22,12 +22,12 @@ message_log <- function(..., isWarning=F) {
   logfile <-  file.path(logdir, paste0(Sys.getpid(),"_Message.log"))
   warnfile <- file.path(logdir, paste0(Sys.getpid(),"_Warning.log"))
 
-  cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "-", paste(..., concatenate=" "), "\n", file = logfile , append = TRUE)
+  cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "), "\n", file = logfile , append = TRUE)
   if(isWarning) {
-    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "-", paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
-    warning(...)
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
+    message(cli::col_magenta(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), cli::style_bold("WARNING: ")), ...)
   } else {
-    message(...)
+    message(cli::col_green(format(Sys.time(), "%Y-%m-%d %H:%M:%S: ")), ...)
   }
 
 }

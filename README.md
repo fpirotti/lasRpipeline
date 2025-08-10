@@ -47,17 +47,17 @@ process<-function(){
                      ncores = min(length(ctg@data$filename), 
                                   as.integer(half_cores()/2) ) ) )
                                   
-  normFiles <- normalize(ctg, odir)
+  normFiles <- lasRpipeline::normalize(ctg, odir)
    
   message_log("Reference GRID, might be different CRS. ") 
   
   grid <- terra::rast("../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif")
   
-  grid[values(grid,mat=F) < 180 | terra::values(grid,mat=F) > 190] <- NA
+  grid[terra::values(grid,mat=F) < 180 | terra::values(grid,mat=F) > 190] <- NA
   cellids <- terra::cells(grid)
   centers <- terra::xyFromCell(grid,cellids)
   
-  points_sf <- sf::st_as_sf(as.data.frame(centers), coords = c("x", "y"), crs = crs(grid) )
+  points_sf <- sf::st_as_sf(as.data.frame(centers), coords = c("x", "y"), crs = terra::crs(grid) )
   
   points_sf_crsPoints <- sf::st_transform(points_sf, lidR::crs(ctg))  
  
@@ -71,19 +71,24 @@ process<-function(){
   
   points_sf_crsPoints_overlap_coords <- sf::st_coordinates(points_sf_crsPoints_overlap) 
   
-  lasR::set_parallel_strategy(lasR::sequential())
+##STRATEGY FOR PARALLELIZE AS INJECTED R CODE (function fuelMetrics)
+## will not be parallel in lasR - but we need to split the many cells not the 
+## lidar chunck so we do it ourselves
+
+chunkProcess <- function(points_sf_crsPoints_overlap_coords_chunk){
+  read = reader_circles(points_sf_crsPoints_overlap_coords_chunk[,1], 
+                        points_sf_crsPoints_overlap_coords_chunk[,2], 5) 
+  metrics =  callback(fuelMetrics, expose = "xyzcE", 
+                      drop_buffer = T, no_las_update = T) 
+  pipeline = read + metrics
   
-  # set_lidr_threads(1) ; data.table::setDTthreads(1) # for cran only
+  message_log("Starting")
+  ans = exec(pipeline, on = ctg.norm@data$filename, progress=T, ncores=1)
+  message_log("END")
+  ans
+}
 
-read = reader_circles(points_sf_crsPoints_overlap_coords[1:4,1], 
-                      points_sf_crsPoints_overlap_coords[1:4,2], 5)
-                      
-metrics =  callback(fuelMetrics, expose = "xyzcE", 
-                    drop_buffer = F, no_las_update = F)
 
-pipeline = read + metrics
-
-ans = exec(pipeline, on = ctg.norm )
 
                           
 }

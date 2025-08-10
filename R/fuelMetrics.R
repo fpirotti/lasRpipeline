@@ -1,32 +1,21 @@
 
-#' slope_aspect
-#' @description
-#' Return interpolated slope and aspect from linear model and
-#' robust linear model
-#'
-#' @param x x coordinate
-#' @param y y coordinate
-#' @param z z coordinate
-#'
-#' @returns a list with slope and aspect in degrees, both with
-#' lme and wi
-#'
-#' @examples
-#' # none
-slope_aspect <- function(x, y, z) {
-  m <- stats::lm(z ~ x + y)
-  a <- stats::coef(m)[2]  # slope in x
-  b <- stats::coef(m)[3]  # slope in y
+fuelMetrics<-function (data)
+{
+  if(nrow(data)==0){
+    return(c(NA, NA))
+  }
 
+  ground <- data[data$Classification==2,]
+  if(nrow(ground)<5 ){
+    # metrics <- list(slopeRobust = NA,
+    #                 aspectRobust = NA)
 
-  slope  <- atan(sqrt(a^2 + b^2)) * 180 / pi
-  aspect <- atan2(b, -a) * 180 / pi
+    return(c(NA, NA))
+  }
 
-  if (aspect < 0) aspect <- aspect + 360
-
-  fit <- MASS::rlm(z ~ x + y)
-  a <- stats::coef(fit)["x"]
-  b <- stats::coef(fit)["y"]
+  fit <- MASS::rlm(Z ~ X + Y,data = ground )
+  a <- stats::coef(fit)["X"]
+  b <- stats::coef(fit)["Y"]
 
   # slope (degrees)
   slope_deg <- atan(sqrt(a^2 + b^2)) * 180 / pi
@@ -35,19 +24,9 @@ slope_aspect <- function(x, y, z) {
   aspect_rad <- atan2(b, -a) # note the sign flip to match GIS convention
   aspect_deg <- (aspect_rad * 180 / pi) %% 360
 
+  # metrics <- list(slopeRobust = slope_deg[[1]], aspect_deg[[1]])
+  metrics <- c( slope_deg[[1]], aspect_deg[[1]])
 
-  return(list(slope = slope, aspect = aspect,
-              slopeRob = slope_deg,
-              aspectRob = aspect_deg))
-}
-
-fuelMetrics<-function (data)
-{
-  browser()
-  ground <- data[data$Classification==2,]
-  sa <- slope_aspect(ground$X, ground$Y, ground$Z)
-
-  metrics <- list(sa)
   return(metrics)
 }
 
