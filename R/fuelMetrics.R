@@ -2,15 +2,16 @@
 fuelMetrics<-function (data)
 {
   if(nrow(data)==0){
-    return(c(NA, NA))
+    return(c(NA, NA,NA, NA, NA))
   }
 
   ground <- data[data$Classification==2,]
   if(nrow(ground)<10 ){
-    # metrics <- list(slopeRobust = NA,
-    #                 aspectRobust = NA)
 
-    return(c(NA, NA,NA))
+      return(c(mean(data$X),
+               mean(data$Y),
+               median(data$Z), NA,NA))
+
   }
 
   fit <- tryCatch(
@@ -22,7 +23,9 @@ fuelMetrics<-function (data)
     }
   )
   if(!inherits(fit,"lm")){
-    return(c(NA, NA,NA))
+    return(c(mean(ground$X),
+             mean(ground$Y),
+             median(ground$Z), NA,NA))
   }
 
 
@@ -37,7 +40,10 @@ fuelMetrics<-function (data)
   aspect_deg <- (aspect_rad * 180 / pi) %% 360
 
   # metrics <- list(slopeRobust = slope_deg[[1]], aspect_deg[[1]])
-  metrics <- c( median(ground$Z), slope_deg[[1]], aspect_deg[[1]])
+  metrics <- c( mean(ground$X),
+                mean(ground$Y),
+                median(ground$Z),
+                slope_deg[[1]], aspect_deg[[1]])
 
   return(metrics)
 }

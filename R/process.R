@@ -79,15 +79,16 @@ process <- function() {
 
   dd <- sf::st_intersects(points_sf_crsPoints, boundary, sparse =  FALSE)
 
-  points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd, ]
+  points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd[,1], ]
 
   points_sf_crsPoints_overlap_coords <- as.data.frame(sf::st_coordinates(points_sf_crsPoints_overlap))
-
+  points_sf_crsPoints_overlap_coords$id <- points_sf_crsPoints_overlap$cellID
   ##STRATEGY FOR PARALLELIZE AS INJECTED R CODE (function fuelMetrics)
   ## will not be parallel in lasR - but we need to split the many cells not the
   ## lidar chunck so we do it ourselves
 
   chunkProcess <- function(points_sf_crsPoints_overlap_coords_chunk) {
+
     read <- lasR::reader_circles(
       points_sf_crsPoints_overlap_coords_chunk[, 1],
       points_sf_crsPoints_overlap_coords_chunk[, 2],
@@ -157,14 +158,29 @@ process <- function() {
 
     finalRes[names(fres)[which(!are.null)]] <- fres[which(!are.null)]
   }
+
   fres2 <-  lapply(finalRes, function(x) {
-    as.data.frame(do.call(rbind, x))
+    tryCatch({
+      as.data.frame(x)
+    }, warning = function(e){
+      browser()
+    })
   })
 
   fres3 <- data.table::rbindlist(fres2)
-  gridOut[[1]][points_sf_crsPoints_overlap$cellID] <- fres3$V1
-  gridOut[[2]][points_sf_crsPoints_overlap$cellID] <- fres3$V2
+
+  points_sfOut <- sf::st_as_sf(as.data.frame(fres3),
+                            coords = c("V1", "V2"),
+                            crs= lidR::crs(ctg)  )
+
+  points_sf_crsPoints_out <- sf::st_transform(points_sfOut, crs = terra::crs(grid))
+  cc<-sf::st_coordinates(points_sf_crsPoints_out)
+  points_sf_crsPoints_out$x <- cc[,1]
+  points_sf_crsPoints_out$y <- cc[,2]
+
+  gridOut[[1]][points_sf_crsPoints_overlap$cellID] <- cc[,1]
+  gridOut[[2]][points_sf_crsPoints_overlap$cellID] <- cc[,2]
   gridOut[[3]][points_sf_crsPoints_overlap$cellID] <- fres3$V3
-  writeRaster(gridOut, "gridOut.tif")
+  writeRaster(gridOut, "gridOut.tif", overwrite=T)
 
 }
