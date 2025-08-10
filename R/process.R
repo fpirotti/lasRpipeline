@@ -76,12 +76,10 @@ process<-function(){
 
 
  fres <-  parallel::mclapply(names(chunks),
-                     mc.cores = 50,
+                     mc.cores = 1,
                      function(chunkID){
     chunk <- chunks[[chunkID]]
-    message_log("Starting ", chunkID)
     res <- chunkProcess(chunk)
-    message_log("END chunk ", chunkID)
     res
   } )
 

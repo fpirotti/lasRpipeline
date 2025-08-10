@@ -15,7 +15,7 @@ fuelMetrics<-function (data)
 
   fit <- tryCatch(
     {
-      rlm(Z ~ X + Y, data = ground)
+      MASS::rlm(Z ~ X + Y, data = ground)
     },
     error = function(e) {
       return(NULL) # or NA, or some placeholder fit object
