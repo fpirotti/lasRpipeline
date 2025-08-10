@@ -10,20 +10,22 @@ fuelMetrics<-function (data)
     # metrics <- list(slopeRobust = NA,
     #                 aspectRobust = NA)
 
-    return(c(NA, NA))
+    return(c(NA, NA,NA))
   }
 
   fit <- tryCatch(
     {
-      MASS::rlm(Z ~ X + Y, data = ground)
+      suppressWarnings(MASS::rlm(Z ~ X + Y, data = ground))
     },
     error = function(e) {
-      return(NULL) # or NA, or some placeholder fit object
+      NA
     }
   )
-  if(is.null(fit)){
-    return(c(Inf,Inf))
+  if(!inherits(fit,"lm")){
+    return(c(NA, NA,NA))
   }
+
+
   a <- stats::coef(fit)["X"]
   b <- stats::coef(fit)["Y"]
 
@@ -35,7 +37,7 @@ fuelMetrics<-function (data)
   aspect_deg <- (aspect_rad * 180 / pi) %% 360
 
   # metrics <- list(slopeRobust = slope_deg[[1]], aspect_deg[[1]])
-  metrics <- c( slope_deg[[1]], aspect_deg[[1]])
+  metrics <- c( median(ground$Z), slope_deg[[1]], aspect_deg[[1]])
 
   return(metrics)
 }
