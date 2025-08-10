@@ -15,7 +15,7 @@ process<-function(){
     stop("No ground class")
   }
 
-  lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
+  # lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
   message_log("Normalize")
 
   lasR::exec(lasR::write_lax(), on = ctg,
@@ -39,13 +39,18 @@ process<-function(){
 
   points_sf_crsPoints$cellID <- cellids
 
-  ctg.norm <- lidR::catalog(normFiles[3:4])
+  ctg.norm <- lidR::catalog(normFiles[1:12])
+
+  lasR::exec(lasR::write_lax(), on = normFiles,
+             with = list(progress = TRUE,
+                         ncores = min(length(normFiles),
+                                      as.integer(lasR::half_cores()/2) ) ) )
 
   dd <- sf::st_intersects(points_sf_crsPoints, sf::st_union(ctg.norm@data$geometry), sparse =  FALSE)
 
   points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd,]
 
-  points_sf_crsPoints_overlap_coords <- sf::st_coordinates(points_sf_crsPoints_overlap)
+  points_sf_crsPoints_overlap_coords <- as.data.frame(sf::st_coordinates(points_sf_crsPoints_overlap))
 
   ##STRATEGY FOR PARALLELIZE AS INJECTED R CODE (function fuelMetrics)
   ## will not be parallel in lasR - but we need to split the many cells not the
@@ -59,11 +64,26 @@ process<-function(){
                         drop_buffer = T, no_las_update = T)
     pipeline = read + metrics
 
-    message_log("Starting")
-    ans = lasR::exec(pipeline, on = ctg.norm@data$filename, progress=T, ncores=1)
-    message_log("END")
+    ans = lasR::exec(pipeline, on = ctg.norm@data$filename, progress=F, ncores=1)
+
     ans
   }
+
+  pointsPerChunk <- 10
+
+  chunks <- split(points_sf_crsPoints_overlap_coords,
+                  ceiling(seq_len(nrow(points_sf_crsPoints_overlap_coords)) / pointsPerChunk))
+
+
+ fres <-  parallel::mclapply(names(chunks),
+                     mc.cores = 50,
+                     function(chunkID){
+    chunk <- chunks[[chunkID]]
+    message_log("Starting ", chunkID)
+    res <- chunkProcess(chunk)
+    message_log("END chunk ", chunkID)
+    res
+  } )
 
 }
 

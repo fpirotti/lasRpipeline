@@ -18,6 +18,7 @@ Imports:
     lasR,
     lidR,
     MASS,
+    parallel,
     sf,
     stats,
     terra,

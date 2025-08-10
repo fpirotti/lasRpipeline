@@ -6,14 +6,24 @@ fuelMetrics<-function (data)
   }
 
   ground <- data[data$Classification==2,]
-  if(nrow(ground)<5 ){
+  if(nrow(ground)<10 ){
     # metrics <- list(slopeRobust = NA,
     #                 aspectRobust = NA)
 
     return(c(NA, NA))
   }
 
-  fit <- MASS::rlm(Z ~ X + Y,data = ground )
+  fit <- tryCatch(
+    {
+      rlm(Z ~ X + Y, data = ground)
+    },
+    error = function(e) {
+      return(NULL) # or NA, or some placeholder fit object
+    }
+  )
+  if(is.null(fit)){
+    return(c(Inf,Inf))
+  }
   a <- stats::coef(fit)["X"]
   b <- stats::coef(fit)["Y"]
 
