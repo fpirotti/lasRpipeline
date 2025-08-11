@@ -42,7 +42,7 @@ message_log <- function(..., isWarning=F) {
   } else {
     message(cli::col_green(format(Sys.time(), "%H:%M:%S - "),
                            " elapsed: ",
-                           format(round(elapsed, 3)) ), ...)
+                           format(round(elapsed, 3)) ) ," - ", ...)
   }
 
 }

@@ -5,8 +5,8 @@
 \title{process}
 \usage{
 process(
-  f,
-  odir,
+  f = "/archivio/shared/geodati/las/fvg/tarvisio/",
+  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm",
   gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
 )
 }
@@ -18,10 +18,24 @@ process(
 \item{gridfile}{path to raster that is the template of your output - MUST overlap the lidar area of course}
 }
 \value{
-NA
+a terra raster object also written to a file tif with time and date,
+written to the odir e.g.  "gridOut20250811_094743.tif"
+The TIF file will have seven layers, with:
+\itemize{
+\item terrain height/slope/aspect
+\item canopy cover (0-100 percent)
+\item canopy height (95th percentile)
+\item crown base height (m)
+\item canopy bulk density (kg/m3)
+}
 }
 \description{
-process
+This will launch optimized processes using 20 plots per chunk and parallelization
+
+Works only in linux for now!
+
+Plots are the centers of the raster cell where we want to calculate topography
+and canopy information.
 }
 \examples{
  # use this to process example

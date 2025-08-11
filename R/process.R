@@ -1,23 +1,37 @@
 #' process
+#' @description
+#' This will launch optimized processes using 20 plots per chunk and parallelization
+#'
+#' Works only in linux for now!
+#'
+#' Plots are the centers of the raster cell where we want to calculate topography
+#' and canopy information.
 #'
 #' @param f path with input las/laz files or specific list of las/laz files
 #' @param odir path to output directory
 #' @param gridfile path to raster that is the template of your output - MUST overlap the lidar area of course
 #'
-#' @returns NA
+#' @returns a terra raster object also written to a file tif with time and date,
+#' written to the odir e.g.  "gridOut20250811_094743.tif"
+#' The TIF file will have seven layers, with:
+#'  - terrain height/slope/aspect
+#'  - canopy cover (0-100 percent)
+#'  - canopy height (95th percentile)
+#'  - crown base height (m)
+#'  - canopy bulk density (kg/m3)
+#'
 #' @export
 #'
 #' @examples
 #'  # use this to process example
-process <- function(f, odir,
+process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
+                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm",
                     gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif") {
 
-  if(dir.exists(f)) f <- list.files(
-    "/archivio/shared/geodati/las/fvg/tarvisio/",
+  if(dir.exists(f)) f <- list.files(f,
     pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
     full.names = T
   )
-  odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm"
   ctg <- lidR::catalog(f)
   if (hasGroundPoints(ctg) < 0.00000000001) {
     message_log("Please classify ground points with your favorite method before continuing. ")
@@ -86,14 +100,16 @@ process <- function(f, odir,
 
   ctg.norm <- lidR::catalog(normFiles)
 
+  message_log("Add LAX files to normalized points if missing")
   lasR::exec(lasR::write_lax(),
              on = normFiles,
              with = list(
-               progress = TRUE,
+               progress = F,
                ncores = min(length(normFiles), as.integer(lasR::half_cores() /
                                                             2))
              ))
 
+  message_log("Keeping only points that intersect the hull of the points")
   dd <- sf::st_intersects(points_sf_crsPoints, boundary, sparse =  FALSE)
 
   points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd[,1], ]
@@ -109,7 +125,7 @@ process <- function(f, odir,
     read <- lasR::reader_circles(
       points_sf_crsPoints_overlap_coords_chunk[, 1],
       points_sf_crsPoints_overlap_coords_chunk[, 2],
-      sizeOfGrid / 2
+      sizeOfGrid / 1.8
     )
 
     metrics <-  lasR::callback(
@@ -157,20 +173,18 @@ process <- function(f, odir,
     }
     message_log("Remaining chunks ...", sum(are.null))
 
-    fres <-  parallel::mclapply(names(chunks[are.null]), mc.cores = 120, function(chunkID) {
+    fres <-  parallel::mclapply(names(chunks[are.null]),
+                                mc.cores = min(length(chunks),
+                                               lasR::half_cores()-1),
+                                function(chunkID) {
       chunk <- chunks[[as.character(chunkID)]]
       res <- chunkProcess(chunk)
-      # res2 <- tryCatch({
-      #   do.call(rbind,res) },
-      #          error = function(e) {
-      #            res
-      #          } )
       res <- cbind(do.call(rbind, res), chunk$id)
       res
     })
 
     names(fres) <- names(chunks[are.null])
-    are.null <-   sapply(fres, function(x) {
+    are.null <- sapply(fres, function(x) {
       is.null(x) || inherits(x, "error") || inherits(x, "try-error")
     })
 
@@ -200,6 +214,10 @@ process <- function(f, odir,
   gridOut[[4]][fres3$V6] <- fres3$V4
   gridOut[[5]][fres3$V6] <- fres3$V5
   gridOut[[6]][fres3$V6] <- fres3$V6
-  terra::writeRaster(gridOut, "gridOut.tif", overwrite=T)
-
+  terra::writeRaster(gridOut,
+                     file.path(odir,
+                               paste0("gridOut",
+                                      format(Sys.time(), "%Y%m%d_%H%M%S"),
+                                      ".tif") ), overwrite=T)
+  gridOut
 }
