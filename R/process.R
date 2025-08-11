@@ -1,15 +1,20 @@
 #' process
 #'
+#' @param f path with input las/laz files or specific list of las/laz files
+#' @param odir path to output directory
+#' @param gridfile path to raster that is the template of your output - MUST overlap the lidar area of course
+#'
 #' @returns NA
 #' @export
 #'
 #' @examples
 #'  # use this to process example
-process <- function() {
-  sizeOfGrid <- 30
-  f <- list.files(
+process <- function(f, odir,
+                    gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif") {
+
+  if(dir.exists(f)) f <- list.files(
     "/archivio/shared/geodati/las/fvg/tarvisio/",
-    pattern = "(?i)\\.la(s|z)$",
+    pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
     full.names = T
   )
   odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm"
@@ -20,8 +25,8 @@ process <- function() {
   }
 
   # lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
-  message_log("Normalize")
 
+  message_log("Add LAX files if missing")
   lasR::exec(lasR::write_lax(),
              on = ctg,
              with = list(
@@ -32,37 +37,49 @@ process <- function() {
                )
              ))
 
+  message_log("Normalize keeping z but adding height above ground info in extra byte")
   normFiles <- lasRpipeline::normalize(ctg, odir)
 
+
+  grid <- terra::rast(gridfile)
+  sizeOfGrid <- terra::res(grid)[[1]]
+
+  message_log("Creating base output raster")
+  gridOut <- terra::rast(grid, nlyrs = 7)
+  gridOut[] <- NA
+  names(gridOut) <- c("height", "slope", "aspect",
+                      "canopyCover", "canopyHeight",
+                      "CBH", "CBD")
+
+
+  message_log("Creating boundary, might take some time")
   if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
     message_log(
       "Boundary is strictly necessary because lasR crashes if plots are inside a tile but without any points inside! "
     )
-    read <- reader()
-    tri <- triangulate(20, filter = keep_ground())
-    contour <- hulls(tri)
+    read <- lasR::reader()
+    tri <- lasR::triangulate(sizeOfGrid/2, filter = lasR::keep_ground())
+    contour <- lasR::hulls(tri)
     pipeline <- read + tri + contour
-    ans <- exec(pipeline, on = normFiles, with = list(ncores = 50))
-    write_sf(sf::st_union(ans), file.path(odir, "boundaries.gpkg"))
+    ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
+    sf::write_sf(sf::st_union(ans), file.path(odir, "boundaries.gpkg"))
   }
-  boundary <- sf::st_buffer(sf::read_sf(file.path(odir, "boundaries.gpkg")), -0.6 *
-                              sizeOfGrid)
-
-  message_log("Reference GRID, might be different CRS. ")
-
-  grid <- terra::rast("../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif")
+  boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
+  message_log("Getting values of centers of cells")
   tv <- terra::values(grid, mat = F)
   grid[tv < 100 | tv > 190] <- NA
   cellids <- terra::cells(grid)
+
+  message_log(cli::style_bold(format(length(cellids),big.mark = "'") ) , " cells to process!")
   centers <- terra::xyFromCell(grid, cellids)
 
-  gridOut <- terra::rast(grid, nlyrs = 3)
-  gridOut[] <- NA
-  names(gridOut) <- c("height", "slope", "aspect")
+
+  message_log("Converting to simple features to transform between CRS")
   points_sf <- sf::st_as_sf(as.data.frame(centers),
                             coords = c("x", "y"),
                             crs = terra::crs(grid))
 
+  message_log("Transforming")
   points_sf_crsPoints <- sf::st_transform(points_sf, lidR::crs(ctg))
 
   points_sf_crsPoints$cellID <- cellids
@@ -148,6 +165,7 @@ process <- function() {
       #          error = function(e) {
       #            res
       #          } )
+      res <- cbind(do.call(rbind, res), chunk$id)
       res
     })
 
@@ -175,12 +193,13 @@ process <- function() {
 
   points_sf_crsPoints_out <- sf::st_transform(points_sfOut, crs = terra::crs(grid))
   cc<-sf::st_coordinates(points_sf_crsPoints_out)
-  points_sf_crsPoints_out$x <- cc[,1]
-  points_sf_crsPoints_out$y <- cc[,2]
 
-  gridOut[[1]][points_sf_crsPoints_overlap$cellID] <- cc[,1]
-  gridOut[[2]][points_sf_crsPoints_overlap$cellID] <- cc[,2]
-  gridOut[[3]][points_sf_crsPoints_overlap$cellID] <- fres3$V3
-  writeRaster(gridOut, "gridOut.tif", overwrite=T)
+  gridOut[[1]][fres3$V6] <- cc[,1]
+  gridOut[[2]][fres3$V6] <- cc[,2]
+  gridOut[[3]][fres3$V6] <- fres3$V3
+  gridOut[[4]][fres3$V6] <- fres3$V4
+  gridOut[[5]][fres3$V6] <- fres3$V5
+  gridOut[[6]][fres3$V6] <- fres3$V6
+  terra::writeRaster(gridOut, "gridOut.tif", overwrite=T)
 
 }

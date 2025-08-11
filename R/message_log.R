@@ -18,16 +18,31 @@
 message_log <- function(..., isWarning=F) {
   # Write to logfile
   logdir <- "logs"
+  ts <- get_cache("timeCounterSteps")
+  if(is.null(ts)){
+    set_cache("timeCounterSteps", Sys.time())
+    ts <- get_cache("timeCounterSteps")
+  }
+  tsnow <- Sys.time()
+  elapsed <- difftime(tsnow ,ts)
+
   if(!dir.exists(logdir)) dir.create(logdir)
   logfile <-  file.path(logdir, paste0(Sys.getpid(),"_Message.log"))
   warnfile <- file.path(logdir, paste0(Sys.getpid(),"_Warning.log"))
 
   cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "), "\n", file = logfile , append = TRUE)
   if(isWarning) {
-    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
-    message(cli::col_magenta(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), cli::style_bold("WARNING: ")), ...)
+    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-",
+        paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
+
+    message(cli::col_cyan(format(Sys.time(), "%H:%M:%S - "),
+                             " elapsed: ",
+                             format(round(elapsed, 3)),
+                             cli::style_bold(": WARNING: ")) , ...)
   } else {
-    message(cli::col_green(format(Sys.time(), "%Y-%m-%d %H:%M:%S: ")), ...)
+    message(cli::col_green(format(Sys.time(), "%H:%M:%S - "),
+                           " elapsed: ",
+                           format(round(elapsed, 3)) ), ...)
   }
 
 }

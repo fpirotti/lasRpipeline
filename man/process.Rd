@@ -4,7 +4,18 @@
 \alias{process}
 \title{process}
 \usage{
-process()
+process(
+  f,
+  odir,
+  gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
+)
+}
+\arguments{
+\item{f}{path with input las/laz files or specific list of las/laz files}
+
+\item{odir}{path to output directory}
+
+\item{gridfile}{path to raster that is the template of your output - MUST overlap the lidar area of course}
 }
 \value{
 NA

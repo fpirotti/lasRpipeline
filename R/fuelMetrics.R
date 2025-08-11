@@ -10,7 +10,7 @@ fuelMetrics<-function (data)
 
       return(c(mean(data$X),
                mean(data$Y),
-               median(data$Z), NA,NA))
+               stats::median(data$Z), NA,NA))
 
   }
 
@@ -25,7 +25,7 @@ fuelMetrics<-function (data)
   if(!inherits(fit,"lm")){
     return(c(mean(ground$X),
              mean(ground$Y),
-             median(ground$Z), NA,NA))
+             stats::median(ground$Z), NA,NA))
   }
 
 
@@ -42,7 +42,7 @@ fuelMetrics<-function (data)
   # metrics <- list(slopeRobust = slope_deg[[1]], aspect_deg[[1]])
   metrics <- c( mean(ground$X),
                 mean(ground$Y),
-                median(ground$Z),
+                stats::median(ground$Z),
                 slope_deg[[1]], aspect_deg[[1]])
 
   return(metrics)
