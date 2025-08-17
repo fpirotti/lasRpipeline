@@ -103,7 +103,7 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
     if (file.exists(file.path(odir, "DTM.vrt"))){
       vrt <- terra::rast(file.path(odir, "DTM.vrt"))
       if(terra::res(vrt)[[1]]==res){
-        if (ask_user(paste0("DTM with same resolutoin (",res," m) exists,
+        if (ask_user(paste0("DTM with same resolution (",res," m) exists,
 you want to overwrite?"), default = FALSE)) {
 
           dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
@@ -111,25 +111,33 @@ you want to overwrite?"), default = FALSE)) {
         } else {
           message_log("Skipping creation of DTM")
         }
+      } else {
+        dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
+        pipeline <- pipeline + dtm
       }
 
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
                   " files with n.",
                   cli::style_bold(lasR::half_cores()),
-                  " cores, might take some time...")
+                  " cores, raster with resolution of ",
+                  res,
+                  " m might take some time...")
 
       ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
-      if(!is.null(ans$rasterize)){
-        resRas <- ans$rasterize
-      } else{
+      if(is.character(ans)){
         resRas <- ans
+      } else{
+        if(is.list(ans)) resRas <- ans$rasterize
+        else message_log("Problem here", isWarning = T)
       }
 
       vrt <- terra::vrt(resRas, file.path(odir, filename="DTM.vrt"), overwrite=T)
       message_log("Tiles DTM nella cartella 'dtm' e File DTM.vrt creato nella cartella ",
                   cli::style_hyperlink(file.path(odir),
                                        paste0("file://",file.path(odir) ) ) )
+
+
       if(!is.null(ans$hulls)){
         sf::write_sf(sf::st_union( ans$hulls),
                      file.path(odir, "boundaries.gpkg"), append = FALSE)
@@ -164,13 +172,7 @@ you want to overwrite?"), default = FALSE)) {
   } else{
     createDTMfun(pipeline)
   }
-
-
-
-
-
-
-
+  message_log(  "Boundary exists, reading "  )
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
   message_log("Getting values of centers of cells")
   # grid2 <- terra::disagg(grid, 3)
