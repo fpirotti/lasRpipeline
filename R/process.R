@@ -10,6 +10,8 @@
 #' @param f path with input las/laz files or specific list of las/laz files
 #' @param odir path to output directory
 #' @param gridfile path to raster that is the template of your output - MUST overlap the lidar area of course
+#' @param createDTM default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM
+#' @param createDSM default = TRUE - creates a raster with DSM in the same resolution of the gridfile
 #'
 #' @returns a terra raster object also written to a file tif with time and date,
 #' written to the odir e.g.  "gridOut20250811_094743.tif"
@@ -25,13 +27,36 @@
 #' @examples
 #'  # use this to process example
 process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
-                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm",
-                    gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif") {
+                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
+                    gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
+                    createDTM = TRUE,
+                    createDSM = TRUE) {
 
-  if(dir.exists(f)) f <- list.files(f,
-    pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
-    full.names = T
-  )
+  if(dir.exists(f[[1]])) {
+    f <- list.files(f,
+                    pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
+                    full.names = T   )
+  }
+
+  if(!dir.exists(odir)){
+    message_log("Creo cartella di output ", odir)
+    dir.create(odir)
+  }
+  if(!dir.exists(file.path(odir,"norm") ) ){
+    message_log("Creo cartella di output ", file.path(odir,"norm") )
+    dir.create( file.path(odir,"norm") )
+  }
+
+  if(createDTM && !dir.exists(file.path(odir,"dtm") ) ){
+    message_log("Creo cartella di output ", file.path(odir,"dtm") )
+    dir.create( file.path(odir,"dtm") )
+  }
+  if(createDSM && !dir.exists(file.path(odir,"dsm") ) ){
+    message_log("Creo cartella di output ", file.path(odir,"dsm") )
+    dir.create( file.path(odir,"dsm") )
+  }
+  ## creato catalog lidR ----
+  message_log("Creo un catalog lidR. ")
   ctg <- lidR::catalog(f)
   if (hasGroundPoints(ctg) < 0.00000000001) {
     message_log("Please classify ground points with your favorite method before continuing. ")
@@ -40,6 +65,7 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
 
   # lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
 
+  ## Add LAX files if missing ----
   message_log("Add LAX files if missing")
   lasR::exec(lasR::write_lax(),
              on = ctg,
@@ -51,13 +77,15 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                )
              ))
 
+  ## Normalize keeping z  ----
   message_log("Normalize keeping z but adding height above ground info in extra byte")
-  normFiles <- lasRpipeline::normalize(ctg, odir)
+  normFiles <- lasRpipeline::normalize(ctg, file.path(odir, "norm") )
 
 
   grid <- terra::rast(gridfile)
   sizeOfGrid <- terra::res(grid)[[1]]
 
+  ## Creating base output raster  ----
   message_log("Creating base output raster")
   gridOut <- terra::rast(grid, nlyrs = 7)
   gridOut[] <- NA
@@ -65,21 +93,87 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                       "canopyCover", "canopyHeight",
                       "CBH", "CBD")
 
+  ## boundaries and/or DTM -----------
+  # here is a bit complex as we pipe them both if both are requested,
+  # to save memory
 
-  message_log("Creating boundary, might take some time")
+  createDTMfun <- function(pipeline){
+
+    if(is.numeric(createDTM)) res <- createDTM  else res <- sizeOfGrid
+    if (file.exists(file.path(odir, "DTM.vrt"))){
+      vrt <- terra::rast(file.path(odir, "DTM.vrt"))
+      if(terra::res(vrt)[[1]]==res){
+        if (ask_user(paste0("DTM with same resolutoin (",res," m) exists,
+you want to overwrite?"), default = FALSE)) {
+
+          dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
+          pipeline <- pipeline + dtm
+        } else {
+          message_log("Skipping creation of DTM")
+        }
+      }
+
+      message_log("Starting process on n.",
+                  cli::style_bold(length(normFiles)),
+                  " files with n.",
+                  cli::style_bold(lasR::half_cores()),
+                  " cores, might take some time...")
+
+      ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
+      if(!is.null(ans$rasterize)){
+        resRas <- ans$rasterize
+      } else{
+        resRas <- ans
+      }
+
+      vrt <- terra::vrt(resRas, file.path(odir, filename="DTM.vrt"), overwrite=T)
+      message_log("Tiles DTM nella cartella 'dtm' e File DTM.vrt creato nella cartella ",
+                  cli::style_hyperlink(file.path(odir),
+                                       paste0("file://",file.path(odir) ) ) )
+      if(!is.null(ans$hulls)){
+        sf::write_sf(sf::st_union( ans$hulls),
+                     file.path(odir, "boundaries.gpkg"), append = FALSE)
+
+        message_log("Boundary file boundaries.gpkg in output directory: ",
+                    cli::style_hyperlink(file.path(odir,"boundaries.gpkg"),
+                                         paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
+      }
+    }
+  }
+
+
+  read <- lasR::reader()
+  tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
+
+  pipeline <- read + tri
+  ## Creating Boundary  ----
   if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
+    message_log("Creating boundary, might take some time")
+    contour <- lasR::hulls(tri)
+    pipeline <- pipeline + contour
     message_log(
       "Boundary is strictly necessary because lasR crashes if plots are inside a tile but without any points inside! "
     )
-    read <- lasR::reader()
-    tri <- lasR::triangulate(sizeOfGrid/2, filter = lasR::keep_ground())
-    contour <- lasR::hulls(tri)
-    pipeline <- read + tri + contour
-    ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
-    sf::write_sf(sf::st_union(ans), file.path(odir, "boundaries.gpkg"))
   }
+
+  if(!createDTM){
+    ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
+    sf::write_sf(sf::st_union( ans),
+                 file.path(odir, "boundaries.gpkg"), append = FALSE)
+
+  } else{
+    createDTMfun(pipeline)
+  }
+
+
+
+
+
+
+
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
   message_log("Getting values of centers of cells")
+  # grid2 <- terra::disagg(grid, 3)
   tv <- terra::values(grid, mat = F)
   grid[tv < 100 | tv > 190] <- NA
   cellids <- terra::cells(grid)

@@ -1,8 +1,10 @@
 Package: lasRpipeline
-Title: What the Package Does (One Line, Title Case)
+Title: pipelines processing of lidar data with at least 10 pts per square meter to fuel model maps
 Version: 0.0.0.9001
 Authors@R: 
-    person("Francesco", "Pirotti", , "francesco.pirotti@unipd.it", role = c("aut", "cre"))
+    person("Francesco", "Pirotti", , "francesco.pirotti@unipd.it", 
+    role = c("aut", "cre"), 
+    comment = c(ORCID = "0000-0002-4796-6406"))
 Description: 
   Provides wrapper functions to the lasR package 
   for parallel processing of typical forestry lidar workflow, 

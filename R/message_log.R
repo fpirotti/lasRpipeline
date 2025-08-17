@@ -36,13 +36,17 @@ message_log <- function(..., isWarning=F) {
         paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
 
     message(cli::col_cyan(format(Sys.time(), "%H:%M:%S - "),
-                             " elapsed: ",
-                             format(round(elapsed, 3)),
+                             # " elapsed: ",
+                             # format(round(elapsed, 3)),
                              cli::style_bold(": WARNING: ")) , ...)
   } else {
-    message(cli::col_green(format(Sys.time(), "%H:%M:%S - "),
-                           " elapsed: ",
-                           format(round(elapsed, 3)) ) ," - ", ...)
+    message(cli::col_green(format(Sys.time(), "%H:%M:%S ")
+                           # " elapsed: ",
+                           # format(round(elapsed, 3))
+                           ) ,cli::col_black(" - ", ...))
   }
 
 }
+
+
+

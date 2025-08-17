@@ -6,8 +6,10 @@
 \usage{
 process(
   f = "/archivio/shared/geodati/las/fvg/tarvisio/",
-  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/norm",
-  gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
+  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
+  gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
+  createDTM = TRUE,
+  createDSM = TRUE
 )
 }
 \arguments{
@@ -16,6 +18,10 @@ process(
 \item{odir}{path to output directory}
 
 \item{gridfile}{path to raster that is the template of your output - MUST overlap the lidar area of course}
+
+\item{createDTM}{default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM}
+
+\item{createDSM}{default = TRUE - creates a raster with DSM in the same resolution of the gridfile}
 }
 \value{
 a terra raster object also written to a file tif with time and date,

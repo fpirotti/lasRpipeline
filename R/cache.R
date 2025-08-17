@@ -89,3 +89,18 @@ list_files_still_to_process <- function(f, odir, inverse=F) {
   ret
 
 }
+
+
+ask_user <- function(question = "Proceed?", default = FALSE, ask = interactive()) {
+  if (!ask ) {
+    return(default)
+  }
+
+  prompt <- paste0(question, " [y/n]: ")
+
+  # ask user
+  ans <- readline(prompt)
+
+  # accept y/yes (case insensitive), otherwise default
+  tolower(ans) %in% c("y", "yes")
+}
