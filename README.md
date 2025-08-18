@@ -5,9 +5,13 @@ Provides wrapper functions for parallel processing using lasR of typical forestr
 
 Please install [lasR](https://github.com/r-lidar/lasR), [lidR](https://github.com/r-lidar/lidR)
 
-NB - this pipeline assumes you have a classified point cloud, without any noise points, so please use responsible and provide a clean and classified point cloud.
+NB - this pipeline assumes you have a classified point cloud, 
+without any noise points, so please use responsibly and provide 
+a clean and classified point cloud.
 
-Parallelization only in linux for now!
+Parallelization only in linux for now.
+
+WORK IN PROGRESS...
 
 ## Usage
 
@@ -27,7 +31,9 @@ odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir"
 gridfile <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
 
 ## check this function in this package... 
+
 ?lasRpipeline::process
+
 process(f, odir, gridfile)
 
 
