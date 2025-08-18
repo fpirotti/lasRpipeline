@@ -12,6 +12,7 @@
 #' @param gridfile path to raster that is the template of your output - MUST overlap the lidar area of course
 #' @param createDTM default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM
 #' @param createDSM default = TRUE - creates a raster with DSM in the same resolution of the gridfile
+#' @param createCHM default = TRUE - creates a raster with CHM in the same resolution of the gridfile
 #'
 #' @returns a terra raster object also written to a file tif with time and date,
 #' written to the odir e.g.  "gridOut20250811_094743.tif"
@@ -30,7 +31,8 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                     odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
                     gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
                     createDTM = TRUE,
-                    createDSM = TRUE) {
+                    createDSM = TRUE,
+                    createCHM = TRUE) {
 
   if(dir.exists(f[[1]])) {
     f <- list.files(f,
@@ -102,20 +104,30 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
     if(is.numeric(createDTM)) res <- createDTM  else res <- sizeOfGrid
     if (file.exists(file.path(odir, "DTM.vrt"))){
       vrt <- terra::rast(file.path(odir, "DTM.vrt"))
-      if(terra::res(vrt)[[1]]==res){
-        if (ask_user(paste0("DTM with same resolution (",res," m) exists,
+      # if(terra::res(vrt)[[1]]==res){
+      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m) exists,
 you want to overwrite?"), default = FALSE)) {
-
+          message_log("Adding creation of DTM to pipeline")
           dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
           pipeline <- pipeline + dtm
         } else {
           message_log("Skipping creation of DTM")
         }
-      } else {
-        dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
-        pipeline <- pipeline + dtm
-      }
+    }
 
+    if(createDSM){
+      message_log("Adding creation of DSM to pipeline")
+      dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
+      pipeline <- pipeline + dsm
+    }
+
+    if(createCHM){
+      message_log("Adding creation of CHM to pipeline")
+      chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
+      pipeline <- pipeline + chm
+    }
+
+    if(length(pipeline)>2){
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
                   " files with n.",
@@ -123,7 +135,6 @@ you want to overwrite?"), default = FALSE)) {
                   " cores, raster with resolution of ",
                   res,
                   " m might take some time...")
-
       ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
       if(is.character(ans)){
         resRas <- ans
@@ -146,13 +157,15 @@ you want to overwrite?"), default = FALSE)) {
                     cli::style_hyperlink(file.path(odir,"boundaries.gpkg"),
                                          paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
       }
+    } else {
+      message_log("Boundary and DTM already available, remove them from output directory if you want to re-create them")
     }
+
   }
 
 
   read <- lasR::reader()
   tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
-
   pipeline <- read + tri
   ## Creating Boundary  ----
   if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
@@ -164,7 +177,7 @@ you want to overwrite?"), default = FALSE)) {
     )
   }
 
-  if(!createDTM){
+  if(!createDTM && length(pipeline)>2){
     ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
     sf::write_sf(sf::st_union( ans),
                  file.path(odir, "boundaries.gpkg"), append = FALSE)
@@ -172,7 +185,7 @@ you want to overwrite?"), default = FALSE)) {
   } else{
     createDTMfun(pipeline)
   }
-  message_log(  "Boundary exists, reading "  )
+  message_log(  "Reading boundary"  )
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
   message_log("Getting values of centers of cells")
   # grid2 <- terra::disagg(grid, 3)
@@ -317,3 +330,4 @@ you want to overwrite?"), default = FALSE)) {
                                       ".tif") ), overwrite=T)
   gridOut
 }
+

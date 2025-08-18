@@ -9,7 +9,8 @@ process(
   odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
   gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
   createDTM = TRUE,
-  createDSM = TRUE
+  createDSM = TRUE,
+  createCHM = TRUE
 )
 }
 \arguments{
@@ -22,6 +23,8 @@ process(
 \item{createDTM}{default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM}
 
 \item{createDSM}{default = TRUE - creates a raster with DSM in the same resolution of the gridfile}
+
+\item{createCHM}{default = TRUE - creates a raster with CHM in the same resolution of the gridfile}
 }
 \value{
 a terra raster object also written to a file tif with time and date,
