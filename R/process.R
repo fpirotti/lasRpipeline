@@ -119,61 +119,81 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   # to save memory
 
   ## this is to check if to add DTM DSM CHM -----------
-  createDTMfun <- function(pipelineIn){
-
+createDTMfun <- function(pipelineIn){
+    outnames <- c()
+    if(!is.null(pipelineIn$hulls) ){
+      outnames<- c(outnames , "hulls")
+    }
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
+    dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
     if (file.exists(file.path(odir, "DTM.vrt"))){
       vrt <- terra::rast(file.path(odir, "DTM.vrt"))
       # if(terra::res(vrt)[[1]]==res){
-      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
+
+      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
           message_log("Adding creation of DTM to pipeline")
-          dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
           pipelineIn <- pipelineIn + dtm
+          outnames<- c(outnames , "dtm")
         } else {
           message_log("Skipping creation of DTM - if you want to force it just remove the files in DTM folder and the DTM.vrt file")
         }
     } else {
-      dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
       pipelineIn <- pipelineIn + dtm
+      outnames<- c(outnames , "dtm")
     }
+
+
+    dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
 
     if (file.exists(file.path(odir, "DSM.vrt"))){
       vrt <- terra::rast(file.path(odir, "DSM.vrt"))
       # if(terra::res(vrt)[[1]]==res){
-      if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
+      if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
         message_log("Adding creation of DSM to pipeline")
-        dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
         pipelineIn <- pipelineIn + dsm
+        outnames<- c(outnames , "dsm")
       } else {
         message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
       }
     } else {
-      dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
       pipelineIn <- pipelineIn + dsm
+      outnames<- c(outnames , "dsm")
     }
 
-    if (file.exists(file.path(odir, "CHM.vrt"))){
-      vrt <- terra::rast(file.path(odir, "CHM.vrt"))
-      # if(terra::res(vrt)[[1]]==res){
-      if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
-        message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-        chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
-        pipelineIn <- pipelineIn + chm
-      } else {
-        message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+    if(createCHM){
+      # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
+      if(!hasHAGinfo(normFiles)){
+        browser()
+        message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )
+        return(NULL)
       }
-    } else {
-      chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
-      pipelineIn <- pipelineIn + chm
+      del = triangulate(filter = keep_first(), use_attribute = "HAG")
+      chm = rasterize(res, del, ofile = "")
+      chm2 = pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
+
+      if (file.exists(file.path(odir, "CHM.vrt"))){
+        vrt <- terra::rast(file.path(odir, "CHM.vrt"))
+        # if(terra::res(vrt)[[1]]==res){
+        if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
+          message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+          pipelineIn <- pipelineIn + del + chm + chm2
+          outnames<- c(outnames , "chm")
+        } else {
+          message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+        }
+      } else {
+        pipelineIn <- pipelineIn + del + chm + chm2
+        outnames<- c(outnames , "chm")
+      }
+
     }
 
 
-    if(length(pipelineIn)>2){
-
-
-
-
+    if(length(pipelineIn)==2){
+      message_log("Nothing to create, DTM DSM and CHM already processed.")
+      return(NULL)
+    }
 
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
@@ -187,39 +207,56 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
 
       # read <- lasR::reader()
       # tri <- lasR::triangulate(max(10, res*3), filter = lasR::keep_ground())
-      # pipelineIn <- read + tri + dsm + chm
+      # pipelineIn2 <- read + tri + dsm + chm
 
-      lasR::set_parallel_strategy( concurrent_files(concurrent_files)  )
-      ans <- lasR::exec(pipelineIn, on = normFiles )
-      # lasR::unset_parallel_strategy()
-
-      if(is.character(ans)){
-        resRas <- ans
-      } else{
-        if(is.list(ans)) resRas <- ans$rasterize
-        else message_log("Problem here", isWarning = T)
+      message_log("Executing.... if you get errors, consider decreasing the number of parallel files or use '1' to get concurrent non-multi-threaded processing")
+      if(concurrent_files>1){
+        lasR::set_parallel_strategy( lasR::concurrent_files(concurrent_files)  )
+      } else {
+        lasR::set_parallel_strategy( lasR::sequential()  )
       }
 
-      vrt <- terra::vrt(resRas, file.path(odir, filename="DTM.vrt"), overwrite=T)
-      message_log("Tiles DTM nella cartella 'dtm' e File DTM.vrt creato nella cartella ",
-                  cli::style_hyperlink(file.path(odir),
-                                       paste0("file://",file.path(odir) ) ) )
+      ans <- lasR::exec(pipelineIn, on = normFiles)
 
-
-      if(!is.null(ans$hulls)){
-        sf::write_sf(sf::st_union( ans$hulls),
-                     file.path(odir, "boundaries.gpkg"), append = FALSE)
-
-        message_log("Boundary file boundaries.gpkg in output directory: ",
-                    cli::style_hyperlink(file.path(odir,"boundaries.gpkg"),
-                                         paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
+      if(is.list(ans)) {
+        if(length(outnames)!=length(ans)){
+          message_log("Problem with output of parallel execution: ", ans,
+                      isWarning = T)
+          return(NULL)
+        }
+        names(ans) <- outnames
+      } else {
+        if(length(outnames)!=1){
+          message_log("Problem with output of parallel execution: ", ans,
+                      isWarning = T)
+          return(NULL)
+        }
+        ans <- list(ans)
+        names(ans) <- outnames[[1]]
       }
-    } else {
-      message_log("Boundary and DTM already available, remove them from output directory if you want to re-create them")
-    }
+
+      for(i in names(ans)){
+        if(i=="hulls") {
+          sf::write_sf(sf::st_union( ans$hulls),
+                       file.path(odir, "boundaries.gpkg"), append = FALSE)
+
+          message_log("Boundary file boundaries.gpkg in output directory: ",
+                      cli::style_hyperlink(file.path(odir,"boundaries.gpkg"),
+                                           paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
+          next
+        }
+
+        vrt <- terra::vrt(ans[[i]], file.path(odir, filename=sprintf("%s.vrt",toupper(i) ) ), overwrite=T)
+        message_log("Tiles ",toupper(i)," nella cartella '",i,"' e File ",toupper(i),".vrt creato nella cartella ",
+                    cli::style_hyperlink(file.path(odir),
+                                         paste0("file://",file.path(odir) ) ) )
+      }
+
+
+
 
   }
-
+## createDTMfun end
 
   read <- lasR::reader()
   tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
@@ -229,9 +266,6 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
     message_log("Creating boundary, might take some time")
     contour <- lasR::hulls(tri)
     pipeline <- pipeline + contour
-    message_log(
-      "Boundary is strictly necessary because lasR crashes if plots are inside a tile but without any points inside! "
-    )
   }
 
   if(!createDTM && length(pipeline)>2){
@@ -241,12 +275,14 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   } else{
     createDTMfun(pipeline)
   }
+
   message_log(  "Reading boundary"  )
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
   message_log("Getting values of centers of cells")
   # grid2 <- terra::disagg(grid, 3)
 
 
+  return(NULL)
 
   message_log("START")
   tv <- terra::values(grid, mat = F)
@@ -396,22 +432,3 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
 }
 
 
-if(!require("lidR"))  install.packages("lidR")
-if(!require("terra"))  install.packages("terra")
-if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
-if(!require("devtools"))  install.packages("devtools")
-if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
-
-
-f <- list.files("/archivio/shared/geodati/las/fvg/tarvisio/", pattern="(?i)\\.la(s|z)$", full.names = T )
-odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir"
-
-## The following will be the grid that acts as a template where all results will be saved
-## so it leads the resolution and origin of the grid. Ideally it should be in the same
-## CRS of the point cloud.
-gridfile <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
-
-## check this function in this package...
-
-# normalize + create DTM DSM CHM at 2 m resolution and metrics at same resolution of gridfile
-process(f, odir, gridfile, T,T,T, 2)

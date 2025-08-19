@@ -9,7 +9,7 @@
 #'
 #' @examples
 #' # none
-plotShade <- function(dtm, dtm_cols=grDevices::terrain.colors(100), main = "DTM with Hillshade"){
+plotShade <- function(dtm, dtm_cols=grDevices::terrain.colors(100), main = "DEM with Hillshade"){
   hillshade <- terra::shade(terra::terrain(dtm, "slope", unit="radians"),
                             terra::terrain(dtm, "aspect", unit="radians"),
                      angle = 45, direction = 315)
@@ -17,7 +17,7 @@ plotShade <- function(dtm, dtm_cols=grDevices::terrain.colors(100), main = "DTM 
   # if(is.null(main))  main = "DTM with Hillshade"
   dtm_cols_alpha <- grDevices::adjustcolor(dtm_cols, alpha.f = 0.5)  # alpha.f from 0 (transparent) to 1 (opaque)
 
-  plot(hillshade, col = grDevices::gray.colors(100), main = main, legend=F)
-  plot(dtm, col = dtm_cols_alpha, add = TRUE )
+  terra::plot(hillshade, col = grDevices::gray.colors(100), main = main, legend=F)
+  terra::plot(dtm, col = dtm_cols_alpha, add = TRUE )
   NULL
 }

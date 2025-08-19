@@ -106,12 +106,6 @@ ask_user <- function(question = "Proceed?", default = FALSE, ask = interactive()
   if (!ask ) {
     return(default)
   }
-
-  prompt <- paste0(question, " [y/n]: ")
-
-  # ask user
-  ans <- readline(prompt)
-
-  # accept y/yes (case insensitive), otherwise default
-  tolower(ans) %in% c("y", "yes")
+  ans <- utils::menu(c("Yes", "No"), title = question)
+  ans==1
 }
