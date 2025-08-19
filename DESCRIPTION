@@ -1,6 +1,6 @@
 Package: lasRpipeline
 Title: pipelines processing of lidar data with at least 10 pts per square meter to fuel model maps
-Version: 0.0.0.9001
+Version: 0.0.0.9024
 Authors@R: 
     person("Francesco", "Pirotti", , "francesco.pirotti@unipd.it", 
     role = c("aut", "cre"), 
@@ -22,6 +22,7 @@ Imports:
     lidR,
     MASS,
     parallel,
+    ps,
     sf,
     stats,
     terra,

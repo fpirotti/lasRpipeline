@@ -5,9 +5,7 @@ Provides wrapper functions for parallel processing using lasR of typical forestr
 
 Please install [lasR](https://github.com/r-lidar/lasR), [lidR](https://github.com/r-lidar/lidR)
 
-NB - this pipeline assumes you have a classified point cloud, 
-without any noise points, so please use responsibly and provide 
-a clean and classified point cloud.
+NB - this pipeline assumes you have a classified point cloud, without any noise points, so please use responsibly and provide a clean and classified point cloud.
 
 Parallelization only in linux for now.
 
@@ -28,13 +26,22 @@ if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
 ## canopy fuel and topography 
 f <- list.files("/archivio/shared/geodati/las/fvg/tarvisio/", pattern="(?i)\\.la(s|z)$", full.names = T )
 odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir"
+
+## The following will be the grid that acts as a template where all results will be saved
+## so it leads the resolution and origin of the grid. Ideally it should be in the same
+## CRS of the point cloud.
 gridfile <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
 
 ## check this function in this package... 
 
 ?lasRpipeline::process
+## run one of the following:
 
-process(f, odir, gridfile)
+# normalize + create DTM DSM CHM and metrics at same resolution of gridfile
+process(f, odir, gridfile) 
+
+# normalize + create DTM DSM CHM at 2 m resolution and metrics at same resolution of gridfile
+process(f, odir, gridfile, T,T,T, 2)
 
 
  

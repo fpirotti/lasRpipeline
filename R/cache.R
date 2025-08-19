@@ -91,6 +91,17 @@ list_files_still_to_process <- function(f, odir, inverse=F) {
 }
 
 
+#' Title
+#'
+#' @param question QUESTION to ask
+#' @param default default reply, true or false
+#' @param ask will be asked only if interactive
+#'
+#' @returns boolean true or false
+#' @export
+#'
+#' @examples
+#' # none
 ask_user <- function(question = "Proceed?", default = FALSE, ask = interactive()) {
   if (!ask ) {
     return(default)

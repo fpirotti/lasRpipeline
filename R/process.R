@@ -9,10 +9,22 @@
 #'
 #' @param f path with input las/laz files or specific list of las/laz files
 #' @param odir path to output directory
-#' @param gridfile path to raster that is the template of your output - MUST overlap the lidar area of course
-#' @param createDTM default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM
-#' @param createDSM default = TRUE - creates a raster with DSM in the same resolution of the gridfile
-#' @param createCHM default = TRUE - creates a raster with CHM in the same resolution of the gridfile
+#' @param gridfile path to raster that is the template of your output - MUST
+#' overlap the lidar area of course
+#' @param createDTM default = TRUE - creates a raster with DTM in the same
+#' resolution of the gridfile
+#' @param createDSM default = TRUE - creates a raster with DSM in the same
+#' resolution of the gridfile
+#' @param createCHM default = TRUE - creates a raster with CHM in the same
+#' resolution of the gridfile
+#' @param forceRes default = NULL - if number is given, it will force resolution of DTM DSM CHM
+#' @param check default  = FALSE - it will check if DTM is already present if
+#' TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a
+#' warning. This is important to use this function as background job, which
+#' often helps to avoid crashing from multi-thread processing.
+#' @param concurrent_files default = NULL - if NULL it will calculate how many
+#' concurrent LAS files to process by trying to check the RAM and number of cores
+#' and divide it by the maximum size of LAS files.
 #'
 #' @returns a terra raster object also written to a file tif with time and date,
 #' written to the odir e.g.  "gridOut20250811_094743.tif"
@@ -32,7 +44,10 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                     gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
                     createDTM = TRUE,
                     createDSM = TRUE,
-                    createCHM = TRUE) {
+                    createCHM = TRUE,
+                    forceRes = NULL,
+                    check = FALSE,
+                    concurrent_files=NULL) {
 
   if(dir.exists(f[[1]])) {
     f <- list.files(f,
@@ -56,6 +71,10 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   if(createDSM && !dir.exists(file.path(odir,"dsm") ) ){
     message_log("Creo cartella di output ", file.path(odir,"dsm") )
     dir.create( file.path(odir,"dsm") )
+  }
+  if(createCHM && !dir.exists(file.path(odir,"chm") ) ){
+    message_log("Creo cartella di output ", file.path(odir,"chm") )
+    dir.create( file.path(odir,"chm") )
   }
   ## creato catalog lidR ----
   message_log("Creo un catalog lidR. ")
@@ -99,43 +118,81 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   # here is a bit complex as we pipe them both if both are requested,
   # to save memory
 
+  ## this is to check if to add DTM DSM CHM -----------
   createDTMfun <- function(pipeline){
 
-    if(is.numeric(createDTM)) res <- createDTM  else res <- sizeOfGrid
+    if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
+
     if (file.exists(file.path(odir, "DTM.vrt"))){
       vrt <- terra::rast(file.path(odir, "DTM.vrt"))
       # if(terra::res(vrt)[[1]]==res){
-      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m) exists,
-you want to overwrite?"), default = FALSE)) {
+      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
           message_log("Adding creation of DTM to pipeline")
           dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
           pipeline <- pipeline + dtm
         } else {
-          message_log("Skipping creation of DTM")
+          message_log("Skipping creation of DTM - if you want to force it just remove the files in DTM folder and the DTM.vrt file")
         }
+    } else {
+      dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
+      pipeline <- pipeline + dtm
     }
 
-    if(createDSM){
-      message_log("Adding creation of DSM to pipeline")
+    if (file.exists(file.path(odir, "DSM.vrt"))){
+      vrt <- terra::rast(file.path(odir, "DSM.vrt"))
+      # if(terra::res(vrt)[[1]]==res){
+      if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
+        message_log("Adding creation of DSM to pipeline")
+        dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
+        pipeline <- pipeline + dsm
+      } else {
+        message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
+      }
+    } else {
       dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
       pipeline <- pipeline + dsm
     }
 
-    if(createCHM){
-      message_log("Adding creation of CHM to pipeline")
+    if (file.exists(file.path(odir, "CHM.vrt"))){
+      vrt <- terra::rast(file.path(odir, "CHM.vrt"))
+      # if(terra::res(vrt)[[1]]==res){
+      if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
+        message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+        chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
+        pipeline <- pipeline + chm
+      } else {
+        message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+      }
+    } else {
       chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
       pipeline <- pipeline + chm
     }
 
+
     if(length(pipeline)>2){
+
+
+
+
+      if(is.null(concurrent_files)) {
+        ram <- ps::ps_system_memory()
+        concurrent_files <- truncate((ram$avail * 0.8) / max(file.size(normFiles)))
+      }
+
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
-                  " files with n.",
-                  cli::style_bold(lasR::half_cores()),
-                  " cores, raster with resolution of ",
-                  res,
+                  " files, with n.",
+                  cli::style_bold(lasR::half_cores()*2),
+                  " cores, using  n.",
+                  cli::style_bold(concurrent_files),
+                  " concurrent files, on a raster with resolution of ",
+                  cli::style_bold(res),
                   " m might take some time...")
-      ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
+
+      lasR::set_parallel_strategy( concurrent_files(concurrent_files)  )
+      ans <- lasR::exec(pipeline, on = normFiles )
+      lasR::unset_parallel_strategy()
+
       if(is.character(ans)){
         resRas <- ans
       } else{
@@ -181,7 +238,6 @@ you want to overwrite?"), default = FALSE)) {
     ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
     sf::write_sf(sf::st_union( ans),
                  file.path(odir, "boundaries.gpkg"), append = FALSE)
-
   } else{
     createDTMfun(pipeline)
   }
@@ -189,6 +245,10 @@ you want to overwrite?"), default = FALSE)) {
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
   message_log("Getting values of centers of cells")
   # grid2 <- terra::disagg(grid, 3)
+
+
+
+  message_log("START")
   tv <- terra::values(grid, mat = F)
   grid[tv < 100 | tv > 190] <- NA
   cellids <- terra::cells(grid)
@@ -331,3 +391,23 @@ you want to overwrite?"), default = FALSE)) {
   gridOut
 }
 
+
+if(!require("lidR"))  install.packages("lidR")
+if(!require("terra"))  install.packages("terra")
+if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
+if(!require("devtools"))  install.packages("devtools")
+if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
+
+
+f <- list.files("/archivio/shared/geodati/las/fvg/tarvisio/", pattern="(?i)\\.la(s|z)$", full.names = T )
+odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir"
+
+## The following will be the grid that acts as a template where all results will be saved
+## so it leads the resolution and origin of the grid. Ideally it should be in the same
+## CRS of the point cloud.
+gridfile <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
+
+## check this function in this package...
+
+# normalize + create DTM DSM CHM at 2 m resolution and metrics at same resolution of gridfile
+process(f, odir, gridfile, T,T,T, 2)
