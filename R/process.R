@@ -47,7 +47,7 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                     createCHM = TRUE,
                     forceRes = NULL,
                     check = FALSE,
-                    concurrent_files=NULL) {
+                    concurrent_files=8) {
 
   if(dir.exists(f[[1]])) {
     f <- list.files(f,
@@ -119,7 +119,7 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   # to save memory
 
   ## this is to check if to add DTM DSM CHM -----------
-  createDTMfun <- function(pipeline){
+  createDTMfun <- function(pipelineIn){
 
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
@@ -129,13 +129,13 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
       if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
           message_log("Adding creation of DTM to pipeline")
           dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
-          pipeline <- pipeline + dtm
+          pipelineIn <- pipelineIn + dtm
         } else {
           message_log("Skipping creation of DTM - if you want to force it just remove the files in DTM folder and the DTM.vrt file")
         }
     } else {
       dtm = lasR::rasterize(res, tri,ofile = file.path(odir, "dtm", "*.tif") )
-      pipeline <- pipeline + dtm
+      pipelineIn <- pipelineIn + dtm
     }
 
     if (file.exists(file.path(odir, "DSM.vrt"))){
@@ -144,13 +144,13 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
       if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
         message_log("Adding creation of DSM to pipeline")
         dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
-        pipeline <- pipeline + dsm
+        pipelineIn <- pipelineIn + dsm
       } else {
         message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
       }
     } else {
       dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
-      pipeline <- pipeline + dsm
+      pipelineIn <- pipelineIn + dsm
     }
 
     if (file.exists(file.path(odir, "CHM.vrt"))){
@@ -159,25 +159,21 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
       if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m) exists, you want to overwrite?"), default = FALSE)) {
         message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
         chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
-        pipeline <- pipeline + chm
+        pipelineIn <- pipelineIn + chm
       } else {
         message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
       }
     } else {
       chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
-      pipeline <- pipeline + chm
+      pipelineIn <- pipelineIn + chm
     }
 
 
-    if(length(pipeline)>2){
+    if(length(pipelineIn)>2){
 
 
 
 
-      if(is.null(concurrent_files)) {
-        ram <- ps::ps_system_memory()
-        concurrent_files <- truncate((ram$avail * 0.8) / max(file.size(normFiles)))
-      }
 
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
@@ -187,11 +183,15 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                   cli::style_bold(concurrent_files),
                   " concurrent files, on a raster with resolution of ",
                   cli::style_bold(res),
-                  " m might take some time...")
+                  " m might take some time ttt...")
+
+      # read <- lasR::reader()
+      # tri <- lasR::triangulate(max(10, res*3), filter = lasR::keep_ground())
+      # pipelineIn <- read + tri + dsm + chm
 
       lasR::set_parallel_strategy( concurrent_files(concurrent_files)  )
-      ans <- lasR::exec(pipeline, on = normFiles )
-      lasR::unset_parallel_strategy()
+      ans <- lasR::exec(pipelineIn, on = normFiles )
+      # lasR::unset_parallel_strategy()
 
       if(is.character(ans)){
         resRas <- ans
@@ -289,6 +289,10 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   ## will not be parallel in lasR - but we need to split the many cells not the
   ## lidar chunck so we do it ourselves
 
+
+  message_log("DONE")
+
+  return(NULL)
   chunkProcess <- function(points_sf_crsPoints_overlap_coords_chunk) {
 
     read <- lasR::reader_circles(
