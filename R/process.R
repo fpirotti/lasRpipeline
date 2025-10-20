@@ -197,13 +197,13 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
         # if(terra::res(vrt)[[1]]==res){
         if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
           message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-          pipeline <- pipeline  + chm2 #+ chm2
+          pipeline <- pipeline  + chm + chm2
           outnames<- c(outnames , "chm")
         } else {
           message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
         }
       } else {
-        pipeline <- pipeline + chm2 #+ chm2
+        pipeline <- pipeline + chm + chm2
         outnames<- c(outnames , "chm")
       }
 
@@ -255,10 +255,10 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
 #       chm =  lasR::rasterize(2, operators = c("HAG_max"),
 #                              ofile = file.path("*.tif") )
 #       pipeline <- lasR::reader() + chm
-      ans <- lasR::exec(pipeline,
+        ans <- lasR::exec(pipeline,
                         on = f  )
 #
-#       browser()
+        # browser()
 
       if(is.list(ans)) {
         if(length(outnames)!=length(ans)){
