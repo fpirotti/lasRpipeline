@@ -187,21 +187,23 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
         message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )
         return(NULL)
       }
-      install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
+      message_log("Creating chm" )
+      # install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
       chm =  lasR::rasterize(res, operators = c("HAG_max"), ofile = file.path(odir, "chm", "*.tif") )
-      # chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
+      message_log("Creating pit-filled version" )
+      chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
       if (file.exists(file.path(odir, "CHM.vrt"))){
         vrt <- terra::rast(file.path(odir, "CHM.vrt"))
         # if(terra::res(vrt)[[1]]==res){
         if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
           message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-          pipeline <- pipeline  + chm #+ chm2
+          pipeline <- pipeline  + chm2 #+ chm2
           outnames<- c(outnames , "chm")
         } else {
           message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
         }
       } else {
-        pipeline <- pipeline + chm + chm2
+        pipeline <- pipeline + chm2 #+ chm2
         outnames<- c(outnames , "chm")
       }
 
@@ -216,6 +218,7 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
       outnames<- c(outnames , "hulls")
     }
 
+    ## PROCESSING!!  ----
     if(length(pipeline)==2){
       message_log("Nothing to create, all already processed.")
       return(NULL)
@@ -244,18 +247,18 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
 
       # browser()
       # normFilesCtg <- lidR::catalog(normFiles)
-
-      download.file("https://www.cirgeo.unipd.it/shared/lazs.zip",
-                    destfile = "lazs.zip")
-      unzip("lazs.zip")
-      f <- list.files(pattern = "(?i)\\.la(s|z)$")
-      chm =  lasR::rasterize(2, operators = c("HAG_max"),
-                             ofile = file.path("*.tif") )
-      pipeline <- lasR::reader() + chm
+#
+#       download.file("https://www.cirgeo.unipd.it/shared/lazs.zip",
+#                     destfile = "lazs.zip")
+#       unzip("lazs.zip")
+#       f <- list.files(pattern = "(?i)\\.la(s|z)$")
+#       chm =  lasR::rasterize(2, operators = c("HAG_max"),
+#                              ofile = file.path("*.tif") )
+#       pipeline <- lasR::reader() + chm
       ans <- lasR::exec(pipeline,
                         on = f  )
-
-      browser()
+#
+#       browser()
 
       if(is.list(ans)) {
         if(length(outnames)!=length(ans)){
@@ -308,9 +311,11 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
 
   # ans <- lasR::exec(pipeline, on = normFiles[2])
 
+  message_log(  "finished!!!!!!!!!!!!!!!!!!!!!!!"  )
+  return(NULL)
 
-
-  applyPipelineFun()
+  ### nothing to do below here ---------
+  # applyPipelineFun()
 
   message_log(  "Reading boundary"  )
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))

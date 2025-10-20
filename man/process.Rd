@@ -5,8 +5,8 @@
 \title{process}
 \usage{
 process(
-  ifiles = "/archivio/shared/geodati/las/fvg/tarvisio/",
-  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
+  ifiles = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm",
+  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm/out/",
   gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
   createDTM = TRUE,
   createDSM = TRUE,
