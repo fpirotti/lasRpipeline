@@ -35,11 +35,20 @@ normalize <- function(f, odir="outdir/norm", force=FALSE, verbose=TRUE){
     return(f1)
   }
 
+  if(hasHAGinfo(f)){
+    if (!ask_user(paste0("Height Above Ground is already available for this file - continuing will ",
+                        cli::style_bold("OVERWRITE"),
+                        " the existing values. Press YES if you want to continue.") )) {
+      return(NULL)
+    }
+  }
+
 
   if(verbose) message_log("Processing: ", cli::style_underline(length(files2process)), " files." )
 
-  pipeline <- lasR::reader() + lasR::hag() +
-                               lasR::write_las(ofile = file.path(odir,"*.laz") )
+  pipeline <- lasR::reader() +  lasR::remove_attribute("HAG") +
+                                lasR::hag() +
+                                lasR::write_las(ofile = file.path(odir,"*.laz") )
   processed <- lasR::exec(pipeline, on = files2process, progress=TRUE)
 
   files2process <- list_files_still_to_process(f, odir)

@@ -7,7 +7,7 @@
 #' Plots are the centers of the raster cell where we want to calculate topography
 #' and canopy information.
 #'
-#' @param f path with input las/laz files or specific list of las/laz files
+#' @param ifiles path with input las/laz files or specific list of las/laz files
 #' @param odir path to output directory
 #' @param gridfile path to raster that is the template of your output - MUST
 #' overlap the lidar area of course
@@ -39,8 +39,8 @@
 #'
 #' @examples
 #'  # use this to process example
-process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
-                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
+process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm",
+                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm/out/",
                     gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
                     createDTM = TRUE,
                     createDSM = TRUE,
@@ -49,8 +49,9 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
                     check = FALSE,
                     concurrent_files=8) {
 
-  if(dir.exists(f[[1]])) {
-    f <- list.files(f,
+
+  if(dir.exists(ifiles[[1]])) {
+    ifiles <- list.files(ifiles,
                     pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
                     full.names = T   )
   }
@@ -78,7 +79,7 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   }
   ## creato catalog lidR ----
   message_log("Creo un catalog lidR. ")
-  ctg <- lidR::catalog(f)
+  ctg <- lidR::catalog(ifiles)
   if (hasGroundPoints(ctg) < 0.00000000001) {
     message_log("Please classify ground points with your favorite method before continuing. ")
     stop("No ground class")
@@ -102,6 +103,16 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   message_log("Normalize keeping z but adding height above ground info in extra byte")
   normFiles <- lasRpipeline::normalize(ctg, file.path(odir, "norm") )
 
+  ctg.norm <- lidR::catalog(normFiles)
+
+  message_log("Add LAX files to normalized points if missing")
+  lasR::exec(lasR::write_lax(),
+             on = normFiles,
+             with = list(
+               progress = F,
+               ncores = min(length(normFiles), as.integer(lasR::half_cores() /
+                                                            2))
+             ))
 
   grid <- terra::rast(gridfile)
   sizeOfGrid <- terra::res(grid)[[1]]
@@ -119,79 +130,94 @@ process <- function(f="/archivio/shared/geodati/las/fvg/tarvisio/",
   # to save memory
 
   ## this is to check if to add DTM DSM CHM -----------
-createDTMfun <- function(pipelineIn){
+# applyPipelineFun <- function(){
+
     outnames <- c()
-    if(!is.null(pipelineIn$hulls) ){
-      outnames<- c(outnames , "hulls")
-    }
+
+    read <- lasR::reader()
+    tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
+    pipeline <- read
+
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
-    dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
-    if (file.exists(file.path(odir, "DTM.vrt"))){
-      vrt <- terra::rast(file.path(odir, "DTM.vrt"))
-      # if(terra::res(vrt)[[1]]==res){
-
-      if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
+    ## dtm ----
+    if(createDTM){
+      dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
+      if (file.exists(file.path(odir, "DTM.vrt"))){
+        vrt <- terra::rast(file.path(odir, "DTM.vrt"))
+        if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
           message_log("Adding creation of DTM to pipeline")
-          pipelineIn <- pipelineIn + dtm
+          pipeline <- pipeline + tri + dtm
           outnames<- c(outnames , "dtm")
         } else {
           message_log("Skipping creation of DTM - if you want to force it just remove the files in DTM folder and the DTM.vrt file")
         }
-    } else {
-      pipelineIn <- pipelineIn + dtm
-      outnames<- c(outnames , "dtm")
-    }
-
-
-    dsm = lasR::dsm(res, tin = TRUE, ofile = file.path(odir, "dsm", "*.tif") )
-
-    if (file.exists(file.path(odir, "DSM.vrt"))){
-      vrt <- terra::rast(file.path(odir, "DSM.vrt"))
-      # if(terra::res(vrt)[[1]]==res){
-      if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-        message_log("Adding creation of DSM to pipeline")
-        pipelineIn <- pipelineIn + dsm
-        outnames<- c(outnames , "dsm")
       } else {
-        message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
+        pipeline <- pipeline + tri + dtm
+        outnames<- c(outnames , "dtm")
       }
-    } else {
-      pipelineIn <- pipelineIn + dsm
-      outnames<- c(outnames , "dsm")
+
     }
 
+
+    ## dsm ----
+    if(createDSM){
+      dsm = lasR::dsm(res,  ofile = file.path(odir, "dsm", "*.tif") )
+
+      if (file.exists(file.path(odir, "DSM.vrt"))){
+        vrt <- terra::rast(file.path(odir, "DSM.vrt"))
+        if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
+          message_log("Adding creation of DSM to pipeline")
+          pipeline <- pipeline + dsm
+          outnames<- c(outnames , "dsm")
+        } else {
+          message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
+        }
+      } else {
+        pipeline <- pipeline + dsm
+        outnames<- c(outnames , "dsm")
+      }
+    }
+
+
+    ## chm ----
     if(createCHM){
       # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
       if(!hasHAGinfo(normFiles)){
-        browser()
         message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )
         return(NULL)
       }
-      del = triangulate(filter = keep_first(), use_attribute = "HAG")
-      chm = rasterize(res, del, ofile = "")
-      chm2 = pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
-
+      install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
+      chm =  lasR::rasterize(res, operators = c("HAG_max"), ofile = file.path(odir, "chm", "*.tif") )
+      # chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
       if (file.exists(file.path(odir, "CHM.vrt"))){
         vrt <- terra::rast(file.path(odir, "CHM.vrt"))
         # if(terra::res(vrt)[[1]]==res){
         if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
           message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-          pipelineIn <- pipelineIn + del + chm + chm2
+          pipeline <- pipeline  + chm #+ chm2
           outnames<- c(outnames , "chm")
         } else {
           message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
         }
       } else {
-        pipelineIn <- pipelineIn + del + chm + chm2
+        pipeline <- pipeline + chm + chm2
         outnames<- c(outnames , "chm")
       }
 
     }
 
 
-    if(length(pipelineIn)==2){
-      message_log("Nothing to create, DTM DSM and CHM already processed.")
+    ## Creating Boundary  ----
+    if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
+      message_log("Creating boundary, might take some time")
+      contour <- lasR::hulls(tri)
+      pipeline <- pipeline + contour
+      outnames<- c(outnames , "hulls")
+    }
+
+    if(length(pipeline)==2){
+      message_log("Nothing to create, all already processed.")
       return(NULL)
     }
 
@@ -216,12 +242,26 @@ createDTMfun <- function(pipelineIn){
         lasR::set_parallel_strategy( lasR::sequential()  )
       }
 
-      ans <- lasR::exec(pipelineIn, on = normFiles)
+      # browser()
+      # normFilesCtg <- lidR::catalog(normFiles)
+
+      download.file("https://www.cirgeo.unipd.it/shared/lazs.zip",
+                    destfile = "lazs.zip")
+      unzip("lazs.zip")
+      f <- list.files(pattern = "(?i)\\.la(s|z)$")
+      chm =  lasR::rasterize(2, operators = c("HAG_max"),
+                             ofile = file.path("*.tif") )
+      pipeline <- lasR::reader() + chm
+      ans <- lasR::exec(pipeline,
+                        on = f  )
+
+      browser()
 
       if(is.list(ans)) {
         if(length(outnames)!=length(ans)){
           message_log("Problem with output of parallel execution: ", ans,
                       isWarning = T)
+          browser()
           return(NULL)
         }
         names(ans) <- outnames
@@ -229,6 +269,7 @@ createDTMfun <- function(pipelineIn){
         if(length(outnames)!=1){
           message_log("Problem with output of parallel execution: ", ans,
                       isWarning = T)
+          browser()
           return(NULL)
         }
         ans <- list(ans)
@@ -252,29 +293,24 @@ createDTMfun <- function(pipelineIn){
                                          paste0("file://",file.path(odir) ) ) )
       }
 
+  # }
+## applyPipelineFun end
+
+  # ccc <- function(data )
+  # {
+  #   summary(data$HAG)
+  #   browser()
+  #   i <- data
+  #   return(data)
+  # }
+  # call <- callback(ccc, expose = "E")
+
+
+  # ans <- lasR::exec(pipeline, on = normFiles[2])
 
 
 
-  }
-## createDTMfun end
-
-  read <- lasR::reader()
-  tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
-  pipeline <- read + tri
-  ## Creating Boundary  ----
-  if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
-    message_log("Creating boundary, might take some time")
-    contour <- lasR::hulls(tri)
-    pipeline <- pipeline + contour
-  }
-
-  if(!createDTM && length(pipeline)>2){
-    ans <- lasR::exec(pipeline, on = normFiles, with = list(ncores = lasR::half_cores()))
-    sf::write_sf(sf::st_union( ans),
-                 file.path(odir, "boundaries.gpkg"), append = FALSE)
-  } else{
-    createDTMfun(pipeline)
-  }
+  applyPipelineFun()
 
   message_log(  "Reading boundary"  )
   boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
@@ -303,16 +339,7 @@ createDTMfun <- function(pipelineIn){
 
   points_sf_crsPoints$cellID <- cellids
 
-  ctg.norm <- lidR::catalog(normFiles)
 
-  message_log("Add LAX files to normalized points if missing")
-  lasR::exec(lasR::write_lax(),
-             on = normFiles,
-             with = list(
-               progress = F,
-               ncores = min(length(normFiles), as.integer(lasR::half_cores() /
-                                                            2))
-             ))
 
   message_log("Keeping only points that intersect the hull of the points")
   dd <- sf::st_intersects(points_sf_crsPoints, boundary, sparse =  FALSE)

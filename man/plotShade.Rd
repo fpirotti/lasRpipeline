@@ -7,7 +7,7 @@
 plotShade(
   dtm,
   dtm_cols = grDevices::terrain.colors(100),
-  main = "DTM with Hillshade"
+  main = "DEM with Hillshade"
 )
 }
 \arguments{

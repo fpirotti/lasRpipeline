@@ -5,26 +5,44 @@
 \title{process}
 \usage{
 process(
-  f = "/archivio/shared/geodati/las/fvg/tarvisio/",
+  ifiles = "/archivio/shared/geodati/las/fvg/tarvisio/",
   odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir",
   gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
   createDTM = TRUE,
   createDSM = TRUE,
-  createCHM = TRUE
+  createCHM = TRUE,
+  forceRes = NULL,
+  check = FALSE,
+  concurrent_files = 8
 )
 }
 \arguments{
-\item{f}{path with input las/laz files or specific list of las/laz files}
+\item{ifiles}{path with input las/laz files or specific list of las/laz files}
 
 \item{odir}{path to output directory}
 
-\item{gridfile}{path to raster that is the template of your output - MUST overlap the lidar area of course}
+\item{gridfile}{path to raster that is the template of your output - MUST
+overlap the lidar area of course}
 
-\item{createDTM}{default = TRUE - creates a raster with DTM in the same resolution of the gridfile  - if instead of TRUE a numeric input is provided, this is considered the requested resolution of the DTM}
+\item{createDTM}{default = TRUE - creates a raster with DTM in the same
+resolution of the gridfile}
 
-\item{createDSM}{default = TRUE - creates a raster with DSM in the same resolution of the gridfile}
+\item{createDSM}{default = TRUE - creates a raster with DSM in the same
+resolution of the gridfile}
 
-\item{createCHM}{default = TRUE - creates a raster with CHM in the same resolution of the gridfile}
+\item{createCHM}{default = TRUE - creates a raster with CHM in the same
+resolution of the gridfile}
+
+\item{forceRes}{default = NULL - if number is given, it will force resolution of DTM DSM CHM}
+
+\item{check}{default  = FALSE - it will check if DTM is already present if
+TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a
+warning. This is important to use this function as background job, which
+often helps to avoid crashing from multi-thread processing.}
+
+\item{concurrent_files}{default = NULL - if NULL it will calculate how many
+concurrent LAS files to process by trying to check the RAM and number of cores
+and divide it by the maximum size of LAS files.}
 }
 \value{
 a terra raster object also written to a file tif with time and date,
