@@ -5,9 +5,9 @@
 \title{process}
 \usage{
 process(
-  ifiles = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm",
-  odir = "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm/out/",
-  gridfile = "../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
+  ifiles = NULL,
+  odir = NULL,
+  gridfile = NULL,
   createDTM = TRUE,
   createDSM = TRUE,
   createCHM = TRUE,
@@ -17,9 +17,11 @@ process(
 )
 }
 \arguments{
-\item{ifiles}{path with input las/laz files or specific list of las/laz files}
+\item{ifiles}{path with input las/laz files or specific list of las/laz files' path
+if not provided it will search the current working directory.}
 
-\item{odir}{path to output directory}
+\item{odir}{path to output directory - if not provided it will create an "odir"
+directory with name "odir" in the current working directory.}
 
 \item{gridfile}{path to raster that is the template of your output - MUST
 overlap the lidar area of course}
@@ -33,7 +35,9 @@ resolution of the gridfile}
 \item{createCHM}{default = TRUE - creates a raster with CHM in the same
 resolution of the gridfile}
 
-\item{forceRes}{default = NULL - if number is given, it will force resolution of DTM DSM CHM}
+\item{forceRes}{default = NULL - if number is given, it will force resolution
+of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
+\emph{gridfile}}
 
 \item{check}{default  = FALSE - it will check if DTM is already present if
 TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a

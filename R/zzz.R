@@ -1,21 +1,25 @@
 .lasRpipeline_cache <- new.env(parent = emptyenv())
 cache_dir <- tools::R_user_dir("lasRpipeline", which = "cache")
 
-.onLoad <- function(libname, pkgname) {
-  dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
-  cache_file <- file.path(cache_dir, "cache.rds")
+.onAttach <- function(libname, pkgname){
 
-  packageStartupMessage("\U0001F6A9 Verifica sistema operativo" )
+  packageStartupMessage("\U0001F7E2 OS verification" )
   cores <- parallel::detectCores(logical = TRUE)
-  packageStartupMessage("\U0001F6A9  CPU threads: ", cores)
+  packageStartupMessage("\U0001F7E2 CPU threads: ", cores)
 
 
   if (!requireNamespace("lasR", quietly = TRUE)) {
     packageStartupMessage(
-      "\u2705 Package lasR non trovato, lo installo!"
+      "\U0001F534 Package lasR not found, please install it!"
     )
-    utils::install.packages("lasR")
+    utils::install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
   }
+}
+
+.onLoad <- function(libname, pkgname) {
+  dir.create(cache_dir, showWarnings = FALSE, recursive = TRUE)
+  cache_file <- file.path(cache_dir, "cache.rds")
+
 
   assign("laspattern", "(?i)\\.la(s|z)$", envir = .lasRpipeline_cache)
   assign("tifpattern", "(?i)\\.tif$", envir = .lasRpipeline_cache)
@@ -26,3 +30,5 @@ cache_dir <- tools::R_user_dir("lasRpipeline", which = "cache")
     list2env(cache_data, envir = .lasRpipeline_cache)
   }
 }
+
+

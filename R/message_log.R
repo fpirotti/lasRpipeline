@@ -26,21 +26,38 @@ message_log <- function(..., isWarning=F) {
   tsnow <- Sys.time()
   elapsed <- difftime(tsnow ,ts)
 
+  bullet <- "\U0001F7E2 "
+
+  if(isWarning) bullet <- "\U0001F534 "
+
+
   if(!dir.exists(logdir)) dir.create(logdir)
-  logfile <-  file.path(logdir, paste0(Sys.getpid(),"_Message.log"))
-  warnfile <- file.path(logdir, paste0(Sys.getpid(),"_Warning.log"))
+  logfile <-  file.path(logdir, paste0(Sys.getpid(),"_Message.log.html"))
+  warnfile <- file.path(logdir, paste0(Sys.getpid(),"_Warning.log.html"))
 
-  cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "), "\n", file = logfile , append = TRUE)
+  if( !file.exists(logfile) ){
+    cat("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Log</title><style>body{font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#121212;color:#e0e0e0;padding:20px;}h1{color:#8ab4f8;}pre{background:#1e1e1e;padding:15px;border-radius:6px;box-shadow:0 0 5px rgba(0,0,0,0.6);white-space:pre-wrap;word-wrap:break-word;font-family:Consolas,'Courier New',monospace;}</style></head><body><h1>Log File</h1><div class='timestamp'>LOG Generated: ", Sys.time(), "</div><pre>", file=logfile)
+  }
+
+  if( !file.exists(warnfile) ){
+    cat("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>Log</title><style>body{font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#121212;color:#e0e0e0;padding:20px;}h1{color:#8ab4f8;}pre{background:#1e1e1e;padding:15px;border-radius:6px;box-shadow:0 0 5px rgba(0,0,0,0.6);white-space:pre-wrap;word-wrap:break-word;font-family:Consolas,'Courier New',monospace;}</style></head><body><h1>Log File</h1><div class='timestamp'>WARN Generated: ", Sys.time(), "</div><pre>", file=warnfile)
+  }
+
+  cat("<div class='timestamp'><pre> ",bullet, format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-", paste(..., concatenate=" "),
+      "</div><pre>\n",
+      file = logfile ,
+      append = TRUE)
+
   if(isWarning) {
-    cat(format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-",
-        paste(..., concatenate=" "), "\n", file = warnfile, append = TRUE)
+    cat("<div class='timestamp'><pre> ", bullet, format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-",
+        paste(..., concatenate=" "), "</div><pre>\n", file = warnfile, append = TRUE)
 
-    message(cli::col_cyan(format(Sys.time(), "%H:%M:%S - "),
+    message(bullet,cli::col_cyan(format(Sys.time(), "%H:%M:%S - "),
                              # " elapsed: ",
                              # format(round(elapsed, 3)),
                              cli::style_bold(": WARNING: ")) , ...)
   } else {
-    message(cli::col_green(format(Sys.time(), "%H:%M:%S ")
+    message(bullet, cli::col_green(format(Sys.time(), "%H:%M:%S ")
                            # " elapsed: ",
                            # format(round(elapsed, 3))
                            ) ,cli::col_black(" - ", ...))

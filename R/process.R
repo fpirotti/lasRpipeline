@@ -7,8 +7,10 @@
 #' Plots are the centers of the raster cell where we want to calculate topography
 #' and canopy information.
 #'
-#' @param ifiles path with input las/laz files or specific list of las/laz files
-#' @param odir path to output directory
+#' @param ifiles path with input las/laz files or specific list of las/laz files' path
+#' if not provided it will search the current working directory.
+#' @param odir path to output directory - if not provided it will create an "odir"
+#' directory with name "odir" in the current working directory.
 #' @param gridfile path to raster that is the template of your output - MUST
 #' overlap the lidar area of course
 #' @param createDTM default = TRUE - creates a raster with DTM in the same
@@ -17,7 +19,9 @@
 #' resolution of the gridfile
 #' @param createCHM default = TRUE - creates a raster with CHM in the same
 #' resolution of the gridfile
-#' @param forceRes default = NULL - if number is given, it will force resolution of DTM DSM CHM
+#' @param forceRes default = NULL - if number is given, it will force resolution
+#' of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
+#' *gridfile*
 #' @param check default  = FALSE - it will check if DTM is already present if
 #' TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a
 #' warning. This is important to use this function as background job, which
@@ -39,9 +43,9 @@
 #'
 #' @examples
 #'  # use this to process example
-process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm",
-                    odir= "/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm/out/",
-                    gridfile="../wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif",
+process <- function(ifiles=NULL,
+                    odir=NULL,
+                    gridfile=NULL,
                     createDTM = TRUE,
                     createDSM = TRUE,
                     createCHM = TRUE,
@@ -49,46 +53,71 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
                     check = FALSE,
                     concurrent_files=8) {
 
+  ## check input las files ----
+  if(is.null(ifiles)){
+    message_log("Creating output directory  ", odir)
+    ifiles <- getwd()
+  } else {
+    message_log("Output directory  ", odir, " exists.")
+  }
 
   if(dir.exists(ifiles[[1]])) {
+    idir <- ifiles[[1]]
     ifiles <- list.files(ifiles,
                     pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
                     full.names = T   )
+  } else {
+    idir <- dirname(ifiles[[1]])
+  }
+
+  if(length(ifiles)==0 ){
+    stop("Zero LAS/LAZ files found in directory ", idir)
+  }
+  if(length(ifiles)!=length(file.exists(ifiles)) ){
+    stop("Not all  LAS/LAZ files in exist - check that all files are in the right path ")
   }
 
   if(!dir.exists(odir)){
-    message_log("Creo cartella di output ", odir)
+    message_log("Creating output directory ", odir, " in current working directory  ", getwd() )
     dir.create(odir)
   }
   if(!dir.exists(file.path(odir,"norm") ) ){
-    message_log("Creo cartella di output ", file.path(odir,"norm") )
     dir.create( file.path(odir,"norm") )
   }
 
   if(createDTM && !dir.exists(file.path(odir,"dtm") ) ){
-    message_log("Creo cartella di output ", file.path(odir,"dtm") )
     dir.create( file.path(odir,"dtm") )
   }
   if(createDSM && !dir.exists(file.path(odir,"dsm") ) ){
-    message_log("Creo cartella di output ", file.path(odir,"dsm") )
     dir.create( file.path(odir,"dsm") )
   }
   if(createCHM && !dir.exists(file.path(odir,"chm") ) ){
-    message_log("Creo cartella di output ", file.path(odir,"chm") )
     dir.create( file.path(odir,"chm") )
   }
+
   ## creato catalog lidR ----
-  message_log("Creo un catalog lidR. ")
-  ctg <- lidR::catalog(ifiles)
-  if (hasGroundPoints(ctg) < 0.00000000001) {
-    message_log("Please classify ground points with your favorite method before continuing. ")
-    stop("No ground class")
+  if(file.exists(file.path(odir,"projectData.rda"))){
+    message_log("Loading  cataloque  " , file.path(odir,"projectData.rda") , " - remove file if it is not intended")
+    load(file.path(odir,"projectData.rda"))
+  } else{
+    message_log("Creating and saving cataloque with " , length(ifiles) , " files.")
+    ctg <- lidR::catalog(ifiles)
+    save(ctg, file=file.path(odir,"projectData.rda"))
+  }
+
+
+  message_log("Checking that point cloud contains ground points (class=2)...")
+  gp.ratio <- hasGroundPoints(ctg)
+  message_log("Ground points ", round(gp.ratio*100, 3), "%")
+  if (gp.ratio< 0.000000000001) {
+    message_log("Please classify ground points with your favorite method before continuing. This tool requires that the point cloud contains classified ground points (class=2) ")
+    stop("No ground class found")
   }
 
   # lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
 
   ## Add LAX files if missing ----
-  message_log("Add LAX files if missing")
+  message_log("Adding LAX files if they are missing")
   lasR::exec(lasR::write_lax(),
              on = ctg,
              with = list(
@@ -99,19 +128,23 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
                )
              ))
 
+
+  concurrent_files <- ifelse(length(ifiles) > lasR::half_cores(),
+                             lasR::half_cores(),
+                             length(ifiles) )
+
   ## Normalize keeping z  ----
-  message_log("Normalize keeping z but adding height above ground info in extra byte")
+  message_log("Normalizing keeping z but adding height above ground info in extra byte!")
   normFiles <- lasRpipeline::normalize(ctg, file.path(odir, "norm") )
 
   ctg.norm <- lidR::catalog(normFiles)
 
-  message_log("Add LAX files to normalized points if missing")
+  message_log("Adding LAX files to normalized points if missing")
   lasR::exec(lasR::write_lax(),
              on = normFiles,
              with = list(
                progress = F,
-               ncores = min(length(normFiles), as.integer(lasR::half_cores() /
-                                                            2))
+               ncores = min(length(normFiles), as.integer(lasR::half_cores()))
              ))
 
   grid <- terra::rast(gridfile)
@@ -132,15 +165,19 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
   ## this is to check if to add DTM DSM CHM -----------
 # applyPipelineFun <- function(){
 
+    ## we keep two separate pipelines, one for original LAS files,
+    ## and one for normalized LAS files
     outnames <- c()
+    outnamesn <- c()
 
     read <- lasR::reader()
     tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
     pipeline <- read
+    pipelinen <- read
 
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
-    ## dtm ----
+    ## DTM ----
     if(createDTM){
       dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
       if (file.exists(file.path(odir, "DTM.vrt"))){
@@ -160,9 +197,11 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
     }
 
 
-    ## dsm ----
+    ## DSM  ----
     if(createDSM){
       dsm = lasR::dsm(res,  ofile = file.path(odir, "dsm", "*.tif") )
+      pipeline <- lasR::reader() + dsm
+
 
       if (file.exists(file.path(odir, "DSM.vrt"))){
         vrt <- terra::rast(file.path(odir, "DSM.vrt"))
@@ -180,31 +219,42 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
     }
 
 
-    ## chm ----
+    ## CHM ----
     if(createCHM){
       # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
       if(!hasHAGinfo(normFiles)){
         message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )
         return(NULL)
       }
-      message_log("Creating chm" )
+      message_log("Adding CHM creation to pipeline" )
       # install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
-      chm =  lasR::rasterize(res, operators = c("HAG_max"), ofile = file.path(odir, "chm", "*.tif") )
-      message_log("Creating pit-filled version" )
+      chm =  lasR::rasterize(res, operators = c("HAG_max")  )
+      message_log("Adding pit-fill CHM to pipeline" )
       chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
+
       if (file.exists(file.path(odir, "CHM.vrt"))){
-        vrt <- terra::rast(file.path(odir, "CHM.vrt"))
-        # if(terra::res(vrt)[[1]]==res){
-        if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-          message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-          pipeline <- pipeline  + chm + chm2
-          outnames<- c(outnames , "chm")
+        vrt <- tryCatch({
+          terra::rast(file.path(odir, "CHM.vrt"))
+        }, warning=function(X){
+          message_log("VRT corrupted, will recreate" )
+        })
+
+        if(!is.null(vrt)){
+          if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
+            message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+            pipelinen <- pipelinen  + chm + chm2
+            outnamesn<- c(outnamesn , "chm")
+          } else {
+            message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+          }
         } else {
-          message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
+          pipelinen <- pipelinen + chm + chm2
+          outnamesn<- c(outnamesn , "chm")
         }
+
       } else {
-        pipeline <- pipeline + chm + chm2
-        outnames<- c(outnames , "chm")
+        pipelinen <- pipelinen + chm + chm2
+        outnamesn<- c(outnamesn , "chm")
       }
 
     }
@@ -226,13 +276,13 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
 
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
-                  " files, with n.",
+                  " files, on a machine with n.",
                   cli::style_bold(lasR::half_cores()*2),
                   " cores, using  n.",
                   cli::style_bold(concurrent_files),
                   " concurrent files, on a raster with resolution of ",
                   cli::style_bold(res),
-                  " m might take some time ttt...")
+                  " m might take some time ...")
 
       # read <- lasR::reader()
       # tri <- lasR::triangulate(max(10, res*3), filter = lasR::keep_ground())
@@ -245,7 +295,6 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
         lasR::set_parallel_strategy( lasR::sequential()  )
       }
 
-      # browser()
       # normFilesCtg <- lidR::catalog(normFiles)
 #
 #       download.file("https://www.cirgeo.unipd.it/shared/lazs.zip",
@@ -256,9 +305,13 @@ process <- function(ifiles="/archivio/shared/geodati/las/fvg/tarvisiooutdir/chm"
 #                              ofile = file.path("*.tif") )
 #       pipeline <- lasR::reader() + chm
         ans <- lasR::exec(pipeline,
-                        on = f  )
-#
-        # browser()
+                          on = ifiles,
+                          with = list(progress = TRUE)  )
+        ansn <- lasR::exec(pipelinen,
+                          on = ctg.norm@data$filename,
+                          with = list(progress = TRUE)  )
+
+# browser()
 
       if(is.list(ans)) {
         if(length(outnames)!=length(ans)){

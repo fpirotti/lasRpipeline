@@ -4,10 +4,10 @@
 \alias{hasHAGinfo}
 \title{hasGroundPoints}
 \usage{
-hasHAGinfo(f, verbose = T)
+hasHAGinfo(ifiles, verbose = T)
 }
 \arguments{
-\item{f}{file name or character vector with file names to process}
+\item{ifiles}{file name or character vector with file names to process}
 
 \item{verbose}{if TRUE will provide verbose messages, if FALSE then it will be silent.}
 }
