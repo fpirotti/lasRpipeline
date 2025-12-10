@@ -1,3 +1,81 @@
+#' check_dir_structure
+#'
+#' @param ifiles input files or directory with LAS/LAZ files
+#' @param odir output directory
+#'
+#' @returns TRUE if all OK
+#'
+#' @examples
+#' #
+check_dir_structure <- function(ifiles=NULL,
+                                odir=NULL ) {
+
+  if(is.null(ifiles) || (!dir.exists(ifiles[[1]]) && !file.exists(ifiles[[1]]))){
+    message_log("Sorry but value of ",
+                cli::style_italic("ifiles") ,
+                " argument is neither valid files or valid directory",  isWarning = T)
+    return(NULL)
+  }
+
+  if(dir.exists(ifiles[[1]])) {
+    idir <- ifiles[[1]]
+    ifiles <- list.files(ifiles,
+                         pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
+                         full.names = T   )
+  } else {
+    idir <- dirname(ifiles[[1]])
+  }
+
+  if(length(ifiles)==0 ){
+    message_log("Zero LAS/LAZ files found in directory ", idir, isWarning = T )
+    stop("Zero LAS/LAZ files found in directory ", idir)
+  }
+  if(length(ifiles)!=length(file.exists(ifiles)) ){
+    message_log("Not all  LAS/LAZ files in exist - check that all files are in the right path ", isWarning = T )
+    stop("Not all  LAS/LAZ files in exist - check that all files are in the right path ")
+  }
+
+  if(!dir.exists(odir)){
+    if(basename(odir)==odir){
+      message_log("You provided only name, not path, to output directory, thus
+creating output directory ", odir, " in current working directory  ", getwd() )
+      dir.create(odir)
+    } else {
+      message_log("Creating output directory ", odir, " in current working directory  ", getwd() )
+      dir.create(odir)
+    }
+  } else {
+    message_log("Output directory ", odir, " exists, using it." )
+  }
+
+  if(!dir.exists(file.path(odir,"norm") ) ){
+    dir.create( file.path(odir,"norm") )
+    message_log("Creating  'norm' subdir in output directory." )
+  } else {
+    message_log("'norm' subdir in output directory exists, will overwrite contents only if user confirms." )
+  }
+  if(!dir.exists(file.path(odir,"dtm") ) ){
+    dir.create( file.path(odir,"dtm") )
+  }else {
+    message_log("'dtm' subdir in output directory exists, will overwrite contents only if user confirms." )
+  }
+  if(!dir.exists(file.path(odir,"dsm") ) ){
+    dir.create( file.path(odir,"dsm") )
+    message_log("Creating  'dsm' subdir in output directory." )
+  }else {
+    message_log("'dsm' subdir in output directory exists, will overwrite contents only if user confirms." )
+  }
+  if(!dir.exists(file.path(odir,"chm") ) ){
+    dir.create( file.path(odir,"chm") )
+    message_log("Creating  'chm' subdir in output directory." )
+  }else {
+    message_log("'chm' subdir in output directory exists, will overwrite contents only if user confirms." )
+  }
+
+}
+
+
+
 #' process
 #' @description
 #' This will launch optimized processes using 20 plots per chunk and parallelization
@@ -13,12 +91,14 @@
 #' directory with name "odir" in the current working directory.
 #' @param gridfile path to raster that is the template of your output - MUST
 #' overlap the lidar area of course
-#' @param createDTM default = TRUE - creates a raster with DTM in the same
-#' resolution of the gridfile
-#' @param createDSM default = TRUE - creates a raster with DSM in the same
-#' resolution of the gridfile
-#' @param createCHM default = TRUE - creates a raster with CHM in the same
-#' resolution of the gridfile
+#' @param create list with following
+#'   Must include:
+#'   \describe{
+#'     \item{createDTM}{Bolean: default = TRUE}
+#'     \item{createDSM}{Bolean: default = TRUE}
+#'     \item{createCHM}{Bolean: default = TRUE}
+#'   }
+#'
 #' @param forceRes default = NULL - if number is given, it will force resolution
 #' of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
 #' *gridfile*
@@ -42,58 +122,21 @@
 #' @export
 #'
 #' @examples
-#'  # use this to process example
+#'  # check README
 process <- function(ifiles=NULL,
                     odir=NULL,
                     gridfile=NULL,
-                    createDTM = TRUE,
-                    createDSM = TRUE,
-                    createCHM = TRUE,
+                    create = list(
+                      createDTM = TRUE,
+                      createDSM = TRUE,
+                      createCHM = TRUE
+                      ),
                     forceRes = NULL,
                     check = FALSE,
                     concurrent_files=8) {
 
+  if(is.null(check_dir_structure(ifiles, odir))) return(NULL)
   ## check input las files ----
-  if(is.null(ifiles)){
-    message_log("Creating output directory  ", odir)
-    ifiles <- getwd()
-  } else {
-    message_log("Output directory  ", odir, " exists.")
-  }
-
-  if(dir.exists(ifiles[[1]])) {
-    idir <- ifiles[[1]]
-    ifiles <- list.files(ifiles,
-                    pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
-                    full.names = T   )
-  } else {
-    idir <- dirname(ifiles[[1]])
-  }
-
-  if(length(ifiles)==0 ){
-    stop("Zero LAS/LAZ files found in directory ", idir)
-  }
-  if(length(ifiles)!=length(file.exists(ifiles)) ){
-    stop("Not all  LAS/LAZ files in exist - check that all files are in the right path ")
-  }
-
-  if(!dir.exists(odir)){
-    message_log("Creating output directory ", odir, " in current working directory  ", getwd() )
-    dir.create(odir)
-  }
-  if(!dir.exists(file.path(odir,"norm") ) ){
-    dir.create( file.path(odir,"norm") )
-  }
-
-  if(createDTM && !dir.exists(file.path(odir,"dtm") ) ){
-    dir.create( file.path(odir,"dtm") )
-  }
-  if(createDSM && !dir.exists(file.path(odir,"dsm") ) ){
-    dir.create( file.path(odir,"dsm") )
-  }
-  if(createCHM && !dir.exists(file.path(odir,"chm") ) ){
-    dir.create( file.path(odir,"chm") )
-  }
 
   ## creato catalog lidR ----
   if(file.exists(file.path(odir,"projectData.rda"))){
@@ -178,7 +221,7 @@ process <- function(ifiles=NULL,
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
     ## DTM ----
-    if(createDTM){
+    if(create$DTM){
       dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
       if (file.exists(file.path(odir, "DTM.vrt"))){
         vrt <- terra::rast(file.path(odir, "DTM.vrt"))
@@ -198,7 +241,7 @@ process <- function(ifiles=NULL,
 
 
     ## DSM  ----
-    if(createDSM){
+    if(create$DSM){
       dsm = lasR::dsm(res,  ofile = file.path(odir, "dsm", "*.tif") )
       pipeline <- lasR::reader() + dsm
 
@@ -220,7 +263,7 @@ process <- function(ifiles=NULL,
 
 
     ## CHM ----
-    if(createCHM){
+    if(create$CHM){
       # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
       if(!hasHAGinfo(normFiles)){
         message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )

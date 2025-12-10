@@ -8,9 +8,7 @@ process(
   ifiles = NULL,
   odir = NULL,
   gridfile = NULL,
-  createDTM = TRUE,
-  createDSM = TRUE,
-  createCHM = TRUE,
+  create = list(createDTM = TRUE, createDSM = TRUE, createCHM = TRUE),
   forceRes = NULL,
   check = FALSE,
   concurrent_files = 8
@@ -26,14 +24,13 @@ directory with name "odir" in the current working directory.}
 \item{gridfile}{path to raster that is the template of your output - MUST
 overlap the lidar area of course}
 
-\item{createDTM}{default = TRUE - creates a raster with DTM in the same
-resolution of the gridfile}
-
-\item{createDSM}{default = TRUE - creates a raster with DSM in the same
-resolution of the gridfile}
-
-\item{createCHM}{default = TRUE - creates a raster with CHM in the same
-resolution of the gridfile}
+\item{create}{list with following
+Must include:
+\describe{
+\item{createDTM}{Bolean: default = TRUE}
+\item{createDSM}{Bolean: default = TRUE}
+\item{createCHM}{Bolean: default = TRUE}
+}}
 
 \item{forceRes}{default = NULL - if number is given, it will force resolution
 of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
@@ -69,5 +66,5 @@ Plots are the centers of the raster cell where we want to calculate topography
 and canopy information.
 }
 \examples{
- # use this to process example
+ # check README
 }
