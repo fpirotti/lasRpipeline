@@ -41,9 +41,28 @@ get_cache_env_ls <- function() {
   ls(env)
 }
 
-cache_clear <- function() {
-  rm(list = ls(envir = .lasRpipeline_cache), envir = .lasRpipeline_cache)
-  unlink(file.path(cache_dir, "cache.rds"))
+#' cache_clear
+#' @description
+#' Removes all information from cache saved in envir .lasRpipeline_cache
+#'
+#' @param silent bolean: default is FALSE so that the user is asked confirmation.
+#' If TRUE, the cache file will be cleared directly without any confirmation request.
+#' @returns environment cache of package
+#' @export
+#'
+#' @examples
+#' # cache_clear()
+cache_clear <- function(silent=F) {
+  if(!silent){
+    if( ask_user("Proceed  with removeing all contents from cache?") ){
+      rm(list = ls(envir = .lasRpipeline_cache), envir = .lasRpipeline_cache)
+      unlink(file.path(cache_dir, "cache.rds"))
+    }
+  } else {
+    rm(list = ls(envir = .lasRpipeline_cache), envir = .lasRpipeline_cache)
+    unlink(file.path(cache_dir, "cache.rds"))
+  }
+
 }
 
 # get file id
@@ -91,7 +110,7 @@ list_files_still_to_process <- function(f, odir, inverse=F) {
 }
 
 
-#' Title
+#' ask_user
 #'
 #' @param question QUESTION to ask
 #' @param default default reply, true or false

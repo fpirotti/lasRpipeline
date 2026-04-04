@@ -43,6 +43,9 @@ hasGroundPoints <- function(f, verbose=T,  progress = TRUE, force=FALSE){
     set_cache(id, hasGround)
   }
 
+  if(verbose) message_log(cli::style_bold(round((hasGround$npoints_per_class[["2"]])/hasGround$npoints, 4)) ,
+                          ": ratio of ground points in a random LAS file to all points (ground/tot = ",
+                          (hasGround$npoints_per_class[["2"]]), "/",hasGround$npoints )
   if(verbose) message_log("## Finished function ", cli::style_bold(sys.call()[[1]]) )
   (hasGround$npoints_per_class[["2"]])/hasGround$npoints
 }

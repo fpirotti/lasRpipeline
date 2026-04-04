@@ -12,7 +12,7 @@
 #' @examples
 #' # testFile <- system.file("extdata", "BL5_UTM_32_ort_0021.laz", package = "lasRpipeline")
 #' # hasGroundPoints(testFile)
-hasHAGinfo <- function(ifiles, verbose=T ){
+hasHAGinfo <- function(ifiles, verbose=TRUE ){
 
   if(verbose) message_log("## Starting function ", sys.call()[[1]] )
   if(inherits(ifiles, "LAScatalog")){
@@ -20,11 +20,14 @@ hasHAGinfo <- function(ifiles, verbose=T ){
   }
   fileInfo <- lidR::readLASheader(ifiles[[1]])
 
-  if(verbose) message_log("## Finished function ", sys.call()[[1]] )
-  !is.null(fileInfo$Extra_Bytes) &&
+  hasHag <- !is.null(fileInfo$Extra_Bytes) &&
     is.element("HAG",
                names(fileInfo$Extra_Bytes$`Extra Bytes Description`))
 
+  if(verbose) message_log( ifelse(hasHag, "OK, has ", "Does NOT have "), " Height Above Ground (HAG) information at its points!" )
+
+  if(verbose) message_log("## Finished function ", sys.call()[[1]] )
+  hasHag
 }
 
 

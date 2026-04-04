@@ -9,13 +9,15 @@
 #' @param ...  characters to add to the message
 #' @param isWarning if TRUE then a warning message is created and both a
 #' warning.log and message.log file is updated.
+#' @param verbose if TRUE then prints also in console, if FALSE the log will only
+#' be saved in the log file.
 #'
 #' @returns files names with pid and warning.log and message.log.
 #' @export
 #'
 #' @examples
 #' # message_log("my nice ", "message in file with PID=", Sys.getpid())
-message_log <- function(..., isWarning=F) {
+message_log <- function(..., isWarning=F, verbose=TRUE) {
   # Write to logfile
   logdir <- "logs"
   ts <- get_cache("timeCounterSteps")
@@ -52,12 +54,12 @@ message_log <- function(..., isWarning=F) {
     cat("<pre> ", bullet, format(Sys.time(), "%Y-%m-%d %H:%M:%S: "), "-",
         paste(..., concatenate=" "), "</pre>\n", file = warnfile, append = TRUE)
 
-    message(bullet,cli::col_cyan(format(Sys.time(), "%Y-%m-%d %H:%M:%S - "),
+    if(verbose)  message(bullet,cli::col_cyan(format(Sys.time(), "%Y-%m-%d %H:%M:%S - "),
                              # " elapsed: ",
                              # format(round(elapsed, 3)),
                              cli::style_bold("WARNING: ")) , ...)
   } else {
-    message(bullet, cli::col_green(format(Sys.time(), "%Y-%m-%d %H:%M:%S - ")
+    if(verbose)  message(bullet, cli::col_green(format(Sys.time(), "%Y-%m-%d %H:%M:%S - ")
                            # " elapsed: ",
                            # format(round(elapsed, 3))
                            ) ,cli::col_black(...))

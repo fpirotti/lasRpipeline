@@ -7,9 +7,6 @@
 #' @param odir output directory, default = outdir/norm
 #' @param force force rewrite of files in output
 #' @param verbose verbose output messages in logs
-#' @param concurrent_files default = NULL - if NULL it will calculate how many
-#' concurrent LAS files to process by trying to check the RAM and number of cores
-#' and divide it by the maximum size of LAS files.
 #'
 #' @returns list of normalized files with full path, that can be used for
 #' successive processing.
@@ -17,10 +14,9 @@
 #'
 #' @examples
 #' # none
-normalize <- function(ifiles, odir="outdir/norm", force=FALSE, verbose=TRUE,
-                      concurrent_files=NULL){
+normalize <- function(ifiles, odir="outdir/norm", force=FALSE, verbose=TRUE ){
 
-  if(verbose) message_log("## Starting function ", paste(cli::style_bold(sys.call()[[1]]), collapse="", sep="") )
+   message_log("## Starting function ", paste(cli::style_bold(sys.call()[[1]]), collapse="", sep=""), verbose=verbose )
 
   files2process <- ifiles
   if(!dir.exists(odir)) {
@@ -31,8 +27,8 @@ normalize <- function(ifiles, odir="outdir/norm", force=FALSE, verbose=TRUE,
   }
 
   if(length(files2process)==0 ) {
-    if(verbose) message_log("All files processed: remove files in ",
-                            cli::style_underline(odir)," if you want to reprocess this stage " )
+    message_log("All files processed: remove files in ",
+                            cli::style_underline(odir)," if you want to reprocess this stage ", verbose=verbose )
 
     f1 <-  list.files(odir, pattern= get_cache("laspattern"),full.names = TRUE )
 
@@ -48,35 +44,30 @@ normalize <- function(ifiles, odir="outdir/norm", force=FALSE, verbose=TRUE,
   }
 
 
-  if(verbose) message_log("Processing: ", cli::style_underline(length(files2process)), " files." )
+  message_log("Processing: ", cli::style_underline(length(files2process)), " files.", verbose=verbose )
 
   pipeline <- lasR::reader() +  lasR::remove_attribute("HAG") +
                                 lasR::hag() +
                                 lasR::write_las(ofile = file.path(odir,"*.laz") )
 
 
-  if(is.null(concurrent_files))
-    concurrent_files <- ifelse(length(files2process) > lasR::half_cores(),
-                             lasR::half_cores(),
-                             length(files2process) )
+
 
   message_log("Executing.... if you get errors, consider decreasing the
-              number of parallel files or use 'concurrent_files=1' to get
-              non-multi-threaded processing")
+              number of  files in ncores  to get
+              non-multi-threaded processing", verbose=verbose)
 
-  if(concurrent_files>1){
-    lasR::set_parallel_strategy( lasR::concurrent_files(concurrent_files)  )
-  } else {
-    lasR::set_parallel_strategy( lasR::sequential()  )
-  }
 
-  processed <- lasR::exec(pipeline, on = files2process, progress=TRUE)
+
+  processed <- lasR::exec(pipeline, on = files2process )
 
   files2process <- list_files_still_to_process(ifiles, odir)
 
   if(length(files2process)!=0 ) {
-    if(verbose) message_log(cli::style_bold(length(files2process)), " files NOT processed:   e.g. ",
-                            cli::style_underline(files2process[[1]])," - check problems... " )
+     message_log(cli::style_bold(length(files2process)), " files NOT processed:   e.g. ",
+                            cli::style_underline(files2process[[1]])," - check problems... ",
+                 isWarning = TRUE,
+                 verbose=verbose )
 
 
 
@@ -84,5 +75,8 @@ normalize <- function(ifiles, odir="outdir/norm", force=FALSE, verbose=TRUE,
   }
 
   f1 <-  list.files(odir, pattern= get_cache("laspattern"),full.names = TRUE )
+
+  message_log("## Finished function ", paste(cli::style_bold(sys.call()[[1]]), collapse="", sep=""), verbose=verbose )
+
   return(f1)
 }

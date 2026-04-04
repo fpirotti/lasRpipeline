@@ -1,3 +1,40 @@
+#' check_vrt_validity
+#'
+#' @param filevrt input files or directory with LAS/LAZ files
+#' @returns raster pointer if all OK, FALSE otherwise
+#'
+#' @examples
+#' #
+check_vrt_validity <- function(filevrt){
+
+  warns <- list()
+
+  # Capture warnings only
+  vrt <- withCallingHandlers(
+    tryCatch(
+      terra::rast(filevrt),
+      error = function(e) {
+        # Capture the error message
+        warns <<- c(warns, e$message)
+        return(NULL)  # return NULL if error occurs
+      }
+    ),
+    warning = function(w) {
+      # Capture all warnings
+      warns <<- c(warns, w$message)
+      invokeRestart("muffleWarning")  # works here inside withCallingHandlers
+    }
+  )
+
+  if(length(warns )!=0){
+    message_log("Problem with VRT file ", filevrt,
+                ", please remove it before continuing or figure out what is wrong with it\n",
+                paste(warns , collapse="\n<br>\n"),isWarning = T)
+    return(FALSE)
+  }
+  return(terra::rast(file.path(filevrt)))
+}
+
 #' check_dir_structure
 #'
 #' @param ifiles input files or directory with LAS/LAZ files
@@ -59,12 +96,12 @@ creating output directory ", odir, " in current working directory  ", getwd() )
   }else {
     message_log("'dtm' subdir in output directory exists, will overwrite contents only if user confirms." )
   }
-  if(!dir.exists(file.path(odir,"dsm") ) ){
-    dir.create( file.path(odir,"dsm") )
-    message_log("Creating  'dsm' subdir in output directory." )
-  }else {
-    message_log("'dsm' subdir in output directory exists, will overwrite contents only if user confirms." )
-  }
+  # if(!dir.exists(file.path(odir,"dsm") ) ){
+  #   dir.create( file.path(odir,"dsm") )
+  #   message_log("Creating  'dsm' subdir in output directory." )
+  # }else {
+  #   message_log("'dsm' subdir in output directory exists, will overwrite contents only if user confirms." )
+  # }
   if(!dir.exists(file.path(odir,"chm") ) ){
     dir.create( file.path(odir,"chm") )
     message_log("Creating  'chm' subdir in output directory." )
@@ -72,6 +109,7 @@ creating output directory ", odir, " in current working directory  ", getwd() )
     message_log("'chm' subdir in output directory exists, will overwrite contents only if user confirms." )
   }
 
+  return(TRUE)
 }
 
 
@@ -95,20 +133,37 @@ creating output directory ", odir, " in current working directory  ", getwd() )
 #'   Must include:
 #'   \describe{
 #'     \item{createDTM}{Bolean: default = TRUE}
-#'     \item{createDSM}{Bolean: default = TRUE}
 #'     \item{createCHM}{Bolean: default = TRUE}
 #'   }
+#' @param  maxh integer, if set it will set a maximum height above the ground
+#' to consider it as vegetation.
 #'
 #' @param forceRes default = NULL - if number is given, it will force resolution
-#' of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
-#' *gridfile*
-#' @param check default  = FALSE - it will check if DTM is already present if
-#' TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a
-#' warning. This is important to use this function as background job, which
-#' often helps to avoid crashing from multi-thread processing.
-#' @param concurrent_files default = NULL - if NULL it will calculate how many
+#' of the output intermediate rasters (DTM CHM) to this value, otherwise it will
+#'  use the resolution of raster in \code{gridfile}
+#'
+#' @param verbose Boolean default = TRUE - print lots of messages.
+#'
+#' @param ncores An object returned by one of \code{sequential()},
+#'   \code{concurrent_points()}, \code{concurrent_files()}, or \code{nested()}.
+#'   If \code{NULL} the default it will calculate how many
 #' concurrent LAS files to process by trying to check the RAM and number of cores
-#' and divide it by the maximum size of LAS files.
+#' and divide it by the maximum size of LAS files. If a simple integer is provided
+#'   it corresponds to \code{concurrent_files(ncores)}.
+#'
+#' @param progress Boolean. Displays a progress bar.
+#'
+#' @param buffer Numeric. Each file is read with a buffer. The default is
+#'   \code{NULL}, which does not mean that the file will not be buffered.
+#'   It means that the internal routine determines whether a buffer is needed
+#'   and will pick the greatest value between its internal suggestion and this
+#'   user-supplied value.
+#'
+#' @param chunk Numeric. By default, files are processed one by one
+#'   (\code{chunk = NULL} or \code{chunk = 0}). It is possible to process in
+#'   arbitrary-sized chunks. This is useful for processing collections with
+#'   large files or for handling massive \code{copc} files.
+#'
 #'
 #' @returns a terra raster object also written to a file tif with time and date,
 #' written to the odir e.g.  "gridOut20250811_094743.tif"
@@ -122,74 +177,94 @@ creating output directory ", odir, " in current working directory  ", getwd() )
 #' @export
 #'
 #' @examples
-#'  # check README
+#'  #
+#'
+#'  create = list(
+#'  createDTM = TRUE,
+#'  createCHM = TRUE
+#'  )
+#'  maxh = 60
+#'  forceRes = 1
+#'  verbose=TRUE
+#'  buffer=NULL
+#'  ncores=NULL
+#'  chunk=NULL
+#'  progress=TRUE
+#'
 process <- function(ifiles=NULL,
                     odir=NULL,
                     gridfile=NULL,
                     create = list(
                       createDTM = TRUE,
-                      createDSM = TRUE,
                       createCHM = TRUE
-                      ),
+                    ),
+                    maxh = NULL,
                     forceRes = NULL,
-                    check = FALSE,
-                    concurrent_files=8) {
+
+                    verbose=TRUE,
+                    progress=TRUE,
+                    ncores=NULL,
+                    buffer=NULL,
+                    chunk=NULL
+                    ) {
 
   if(is.null(check_dir_structure(ifiles, odir))) return(NULL)
   ## check input las files ----
 
   ## creato catalog lidR ----
   if(file.exists(file.path(odir,"projectData.rda"))){
-    message_log("Loading  cataloque  " , file.path(odir,"projectData.rda") , " - remove file if it is not intended")
+    message_log("Loading cataloque from past processing:  " , file.path(odir,"projectData.rda") , " - remove file if it is not intended", verbose=verbose)
     load(file.path(odir,"projectData.rda"))
   } else{
-    message_log("Creating and saving cataloque with " , length(ifiles) , " files.")
+    message_log("Creating and saving cataloque with " , length(ifiles) , " files.",verbose = verbose)
     ctg <- lidR::catalog(ifiles)
     save(ctg, file=file.path(odir,"projectData.rda"))
   }
 
-
-  message_log("Checking that point cloud contains ground points (class=2)...")
+  ## Checking Ground points exist ----
+  message_log("Checking that point cloud contains ground points (class=2)...",verbose = verbose)
   gp.ratio <- hasGroundPoints(ctg)
-  message_log("Ground points ", round(gp.ratio*100, 3), "%")
+  message_log("Ground points ", round(gp.ratio*100, 3), "%",verbose = verbose)
   if (gp.ratio< 0.000000000001) {
-    message_log("Please classify ground points with your favorite method before continuing. This tool requires that the point cloud contains classified ground points (class=2) ")
+    message_log("No points with ground class found, or too liPlease classify ground points with your favorite method before continuing. This tool requires that the point cloud contains classified ground points (class=2) ",verbose = verbose)
     stop("No ground class found")
   }
 
-  # lasR::set_parallel_strategy(lasR::nested(ncores = 12L, ncores2 = 4L))
+  ## set number of cores ----
+  ## depending on the size of the files
+  sc <- ifelse( is.null(ncores),
+                auto_set_lasR_cores(ctg, verbose=verbose),   # auto-detect safe number of cores
+                ncores)
+
+
+  lasR::set_exec_options(
+    progress = progress,
+    ncores   = lasR::concurrent_files(sc),
+    buffer=buffer,
+    chunk=chunk
+  )
 
   ## Add LAX files if missing ----
-  message_log("Adding LAX files if they are missing")
-  lasR::exec(lasR::write_lax(),
-             on = ctg,
-             with = list(
-               progress = TRUE,
-               ncores = min(
-                 length(ctg@data$filename),
-                 as.integer(lasR::half_cores() / 2)
-               )
-             ))
+  message_log("Adding LAX files if they are missing... LAX files are indices that improve processing of LAS point clouds ",verbose = verbose)
+  res <- lasR::exec(lasR::write_lax(), on = ctg )
 
 
-  concurrent_files <- ifelse(length(ifiles) > lasR::half_cores(),
-                             lasR::half_cores(),
-                             length(ifiles) )
-
-  ## Normalize keeping z  ----
-  message_log("Normalizing keeping z but adding height above ground info in extra byte!")
+  ## Normalize keeping z in HAG ----
+  message_log("Normalizing keeping z but adding height above ground info in extra byte!",verbose = verbose)
   normFiles <- lasRpipeline::normalize(ctg, file.path(odir, "norm") )
 
   ctg.norm <- lidR::catalog(normFiles)
+  ctg_summary <- utils::capture.output(print(ctg.norm))
+  pretty_message <- paste(ctg_summary, collapse = "\n")
+  message_log(cli::style_bold("\nDATA BEING PROCESSED IN LIDAR FILES:\n"), pretty_message )
 
-  message_log("Adding LAX files to normalized points if missing")
-  lasR::exec(lasR::write_lax(),
-             on = normFiles,
-             with = list(
-               progress = F,
-               ncores = min(length(normFiles), as.integer(lasR::half_cores()))
-             ))
 
+  message_log("Adding LAX files to normalized points if missing",verbose = verbose)
+  res <- lasR::exec(lasR::write_lax(), on = normFiles )
+
+
+
+  ## Define Grid from template ogrid ----
   grid <- terra::rast(gridfile)
   sizeOfGrid <- terra::res(grid)[[1]]
 
@@ -214,19 +289,24 @@ process <- function(ifiles=NULL,
     outnamesn <- c()
 
     read <- lasR::reader()
-    tri <- lasR::triangulate(max(10, sizeOfGrid*3), filter = lasR::keep_ground())
+    tri <- lasR::triangulate(0, filter = lasR::keep_ground())
     pipeline <- read
     pipelinen <- read
 
     if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
 
     ## DTM ----
-    if(create$DTM){
+    if(create$createDTM){
       dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
-      if (file.exists(file.path(odir, "DTM.vrt"))){
-        vrt <- terra::rast(file.path(odir, "DTM.vrt"))
+
+      if (file.exists(file.path(odir, "DTM.vrt")) ){
+
+        vrt <- check_vrt_validity(file.path(odir, "DTM.vrt"))
+
+        if(!inherits(vrt, "SpatRaster")) stop()
+
         if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-          message_log("Adding creation of DTM to pipeline")
+          message_log("Adding creation of DTM to pipeline!")
           pipeline <- pipeline + tri + dtm
           outnames<- c(outnames , "dtm")
         } else {
@@ -235,69 +315,56 @@ process <- function(ifiles=NULL,
       } else {
         pipeline <- pipeline + tri + dtm
         outnames<- c(outnames , "dtm")
+        message_log("Adding DTM to pipeline", verbose=verbose )
       }
 
     }
-
-
-    ## DSM  ----
-    if(create$DSM){
-      dsm = lasR::dsm(res,  ofile = file.path(odir, "dsm", "*.tif") )
-      pipeline <- lasR::reader() + dsm
-
-
-      if (file.exists(file.path(odir, "DSM.vrt"))){
-        vrt <- terra::rast(file.path(odir, "DSM.vrt"))
-        if (ask_user(paste0("DSM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-          message_log("Adding creation of DSM to pipeline")
-          pipeline <- pipeline + dsm
-          outnames<- c(outnames , "dsm")
-        } else {
-          message_log("Skipping creation of DSM - if you want to force it just remove the files in DSM folder and the DSM.vrt file")
-        }
-      } else {
-        pipeline <- pipeline + dsm
-        outnames<- c(outnames , "dsm")
-      }
-    }
-
 
     ## CHM ----
-    if(create$CHM){
+    if(create$createCHM){
       # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
       if(!hasHAGinfo(normFiles)){
-        message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first" )
+        message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first", isWarning = T )
         return(NULL)
       }
-      message_log("Adding CHM creation to pipeline" )
-      # install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
-      chm =  lasR::rasterize(res, operators = c("HAG_max")  )
-      message_log("Adding pit-fill CHM to pipeline" )
+
+      if(!is.null(maxh)){
+        if(is.na(as.numeric(maxh))){
+          message_log( sprintf("maxh parameter (%s) should be numeric!", maxh), isWarning = T )
+          return(NULL)
+        }
+        chm =  lasR::rasterize(res, operators = c("HAG_max"), filter = sprintf("HAG < %f", maxh)  )
+      } else {
+        chm =  lasR::rasterize(res, operators = c("HAG_max")  )
+      }
+
       chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
 
-      if (file.exists(file.path(odir, "CHM.vrt"))){
-        vrt <- tryCatch({
-          terra::rast(file.path(odir, "CHM.vrt"))
-        }, warning=function(X){
-          message_log("VRT corrupted, will recreate" )
-        })
+      if (file.exists(file.path(odir, "CHM.vrt")) ){
+
+        vrt <- check_vrt_validity(file.path(odir, "CHM.vrt"))
+        if(!inherits(vrt, "SpatRaster")) stop()
 
         if(!is.null(vrt)){
+
           if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
             message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-            pipelinen <- pipelinen  + chm + chm2
-            outnamesn<- c(outnamesn , "chm")
+            pipeline <- pipeline  + chm + chm2
+            outnames<- c(outnames ,"intermediateCHM", "chm")
+            message_log("Adding pit-fill CHM to pipeline", verbose=verbose )
           } else {
             message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
           }
         } else {
-          pipelinen <- pipelinen + chm + chm2
-          outnamesn<- c(outnamesn , "chm")
+          pipeline <- pipeline + chm + chm2
+          outnames<- c(outnames ,"intermediateCHM", "chm")
+          message_log("Adding pit-fill CHM to pipeline", verbose=verbose )
         }
 
       } else {
-        pipelinen <- pipelinen + chm + chm2
-        outnamesn<- c(outnamesn , "chm")
+        pipeline <- pipeline + chm + chm2
+        outnames<- c(outnames , "intermediateCHM", "chm")
+        message_log("Adding pit-filled-CHM to pipeline", verbose=verbose )
       }
 
     }
@@ -306,23 +373,25 @@ process <- function(ifiles=NULL,
     ## Creating Boundary  ----
     if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
       message_log("Creating boundary, might take some time")
-      contour <- lasR::hulls(tri)
-      pipeline <- pipeline + contour
+      if(!exists("tri")){
+        contour <- lasR::hulls(tri, file.path(odir, "boundaries.gpkg") )
+      }
+      pipeline <- pipeline + tri + contour
       outnames<- c(outnames , "hulls")
     }
 
     ## PROCESSING!!  ----
-    if(length(pipeline)==2){
-      message_log("Nothing to create, all already processed.")
-      return(NULL)
-    }
+    # if(length(pipeline)==2){
+    #   message_log("Nothing to create, all already processed.")
+    #   return(NULL)
+    # }
 
       message_log("Starting process on n.",
                   cli::style_bold(length(normFiles)),
                   " files, on a machine with n.",
                   cli::style_bold(lasR::half_cores()*2),
                   " cores, using  n.",
-                  cli::style_bold(concurrent_files),
+                  cli::style_bold(sc),
                   " concurrent files, on a raster with resolution of ",
                   cli::style_bold(res),
                   " m might take some time ...")
@@ -331,12 +400,6 @@ process <- function(ifiles=NULL,
       # tri <- lasR::triangulate(max(10, res*3), filter = lasR::keep_ground())
       # pipelineIn2 <- read + tri + dsm + chm
 
-      message_log("Executing.... if you get errors, consider decreasing the number of parallel files or use '1' to get concurrent non-multi-threaded processing")
-      if(concurrent_files>1){
-        lasR::set_parallel_strategy( lasR::concurrent_files(concurrent_files)  )
-      } else {
-        lasR::set_parallel_strategy( lasR::sequential()  )
-      }
 
       # normFilesCtg <- lidR::catalog(normFiles)
 #
@@ -346,13 +409,11 @@ process <- function(ifiles=NULL,
 #       f <- list.files(pattern = "(?i)\\.la(s|z)$")
 #       chm =  lasR::rasterize(2, operators = c("HAG_max"),
 #                              ofile = file.path("*.tif") )
-#       pipeline <- lasR::reader() + chm
-        ans <- lasR::exec(pipeline,
-                          on = ifiles,
-                          with = list(progress = TRUE)  )
-        ansn <- lasR::exec(pipelinen,
-                          on = ctg.norm@data$filename,
-                          with = list(progress = TRUE)  )
+   pipeline <- lasR::reader() + chm
+   ans <- lasR::exec(pipeline, on = ctg.norm   )
+#
+#         ansn <- lasR::exec(pipelinen,
+#                           on = ctg.norm  )
 
 # browser()
 
@@ -364,15 +425,7 @@ process <- function(ifiles=NULL,
           return(NULL)
         }
         names(ans) <- outnames
-      } else {
-        if(length(outnames)!=1){
-          message_log("Problem with output of parallel execution: ", ans,
-                      isWarning = T)
-          browser()
-          return(NULL)
-        }
-        ans <- list(ans)
-        names(ans) <- outnames[[1]]
+
       }
 
       for(i in names(ans)){
@@ -385,11 +438,25 @@ process <- function(ifiles=NULL,
                                            paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
           next
         }
+        if( length(ans[[i]]) > 1 &&
+            length( unique( tools::file_ext(ans[[i]]) ) ) == 1 &&
+            tolower( unique( tools::file_ext(ans[[i]]) ) )=="tif" ){
+          oo <- file.path(odir, filename=sprintf("%s.vrt",toupper(i) ) )
+          vrt <- terra::vrt(ans[[i]], oo, overwrite=T)
+          message_log("Tiles ",toupper(i)," nella cartella '",i,"' e File ",toupper(i),".vrt creato nella cartella ",
+                      cli::style_hyperlink(file.path(odir), paste0("file://",file.path(odir) ) ) )
 
-        vrt <- terra::vrt(ans[[i]], file.path(odir, filename=sprintf("%s.vrt",toupper(i) ) ), overwrite=T)
-        message_log("Tiles ",toupper(i)," nella cartella '",i,"' e File ",toupper(i),".vrt creato nella cartella ",
-                    cli::style_hyperlink(file.path(odir),
-                                         paste0("file://",file.path(odir) ) ) )
+
+          if(inherits(check_vrt_validity(oo), "SpatRaster") ){
+            ovr <- c(2, 4, 8, 16, 32, 64)
+            sf::gdal_addo(oo, overviews = ovr, read_only = TRUE)
+          } else{
+            message_log("File ", oo  ," is not valid raster! ",
+                        isWarning = T)
+          }
+
+        }
+
       }
 
   # }
