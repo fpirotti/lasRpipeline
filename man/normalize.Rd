@@ -4,13 +4,7 @@
 \alias{normalize}
 \title{normalize}
 \usage{
-normalize(
-  ifiles,
-  odir = "outdir/norm",
-  force = FALSE,
-  verbose = TRUE,
-  concurrent_files = NULL
-)
+normalize(ifiles, odir = "outdir/norm", force = FALSE, verbose = TRUE)
 }
 \arguments{
 \item{ifiles}{file or list of files to process}
@@ -20,10 +14,6 @@ normalize(
 \item{force}{force rewrite of files in output}
 
 \item{verbose}{verbose output messages in logs}
-
-\item{concurrent_files}{default = NULL - if NULL it will calculate how many
-concurrent LAS files to process by trying to check the RAM and number of cores
-and divide it by the maximum size of LAS files.}
 }
 \value{
 list of normalized files with full path, that can be used for

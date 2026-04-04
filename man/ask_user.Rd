@@ -2,7 +2,7 @@
 % Please edit documentation in R/cache.R
 \name{ask_user}
 \alias{ask_user}
-\title{Title}
+\title{ask_user}
 \usage{
 ask_user(question = "Proceed?", default = FALSE, ask = interactive())
 }
@@ -17,7 +17,7 @@ ask_user(question = "Proceed?", default = FALSE, ask = interactive())
 boolean true or false
 }
 \description{
-Title
+ask_user
 }
 \examples{
 # none

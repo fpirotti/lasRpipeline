@@ -4,13 +4,16 @@
 \alias{message_log}
 \title{Title}
 \usage{
-message_log(..., isWarning = F)
+message_log(..., isWarning = F, verbose = TRUE)
 }
 \arguments{
 \item{...}{characters to add to the message}
 
 \item{isWarning}{if TRUE then a warning message is created and both a
 warning.log and message.log file is updated.}
+
+\item{verbose}{if TRUE then prints also in console, if FALSE the log will only
+be saved in the log file.}
 }
 \value{
 files names with pid and warning.log and message.log.

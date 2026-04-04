@@ -8,10 +8,14 @@ process(
   ifiles = NULL,
   odir = NULL,
   gridfile = NULL,
-  create = list(createDTM = TRUE, createDSM = TRUE, createCHM = TRUE),
+  create = list(createDTM = TRUE, createCHM = TRUE),
+  maxh = NULL,
   forceRes = NULL,
-  check = FALSE,
-  concurrent_files = 8
+  verbose = TRUE,
+  progress = TRUE,
+  ncores = NULL,
+  buffer = NULL,
+  chunk = NULL
 )
 }
 \arguments{
@@ -28,22 +32,37 @@ overlap the lidar area of course}
 Must include:
 \describe{
 \item{createDTM}{Bolean: default = TRUE}
-\item{createDSM}{Bolean: default = TRUE}
 \item{createCHM}{Bolean: default = TRUE}
 }}
 
+\item{maxh}{integer, if set it will set a maximum height above the ground
+to consider it as vegetation.}
+
 \item{forceRes}{default = NULL - if number is given, it will force resolution
-of DTM DSM CHM to this value, otherwise it will use the resolutoin of raster in
-\emph{gridfile}}
+of the output intermediate rasters (DTM CHM) to this value, otherwise it will
+use the resolution of raster in \code{gridfile}}
 
-\item{check}{default  = FALSE - it will check if DTM is already present if
-TRUE. If false, it will NOT overwrite the DTM / DSM / CHM, but set out a
-warning. This is important to use this function as background job, which
-often helps to avoid crashing from multi-thread processing.}
+\item{verbose}{Boolean default = TRUE - print lots of messages.}
 
-\item{concurrent_files}{default = NULL - if NULL it will calculate how many
+\item{progress}{Boolean. Displays a progress bar.}
+
+\item{ncores}{An object returned by one of \code{sequential()},
+\code{concurrent_points()}, \code{concurrent_files()}, or \code{nested()}.
+If \code{NULL} the default it will calculate how many
 concurrent LAS files to process by trying to check the RAM and number of cores
-and divide it by the maximum size of LAS files.}
+and divide it by the maximum size of LAS files. If a simple integer is provided
+it corresponds to \code{concurrent_files(ncores)}.}
+
+\item{buffer}{Numeric. Each file is read with a buffer. The default is
+\code{NULL}, which does not mean that the file will not be buffered.
+It means that the internal routine determines whether a buffer is needed
+and will pick the greatest value between its internal suggestion and this
+user-supplied value.}
+
+\item{chunk}{Numeric. By default, files are processed one by one
+(\code{chunk = NULL} or \code{chunk = 0}). It is possible to process in
+arbitrary-sized chunks. This is useful for processing collections with
+large files or for handling massive \code{copc} files.}
 }
 \value{
 a terra raster object also written to a file tif with time and date,
@@ -66,5 +85,18 @@ Plots are the centers of the raster cell where we want to calculate topography
 and canopy information.
 }
 \examples{
- # check README
+ #
+
+ create = list(
+ createDTM = TRUE,
+ createCHM = TRUE
+ )
+ maxh = NULL
+ forceRes = 1
+ verbose=TRUE
+ buffer=NULL
+ ncores=NULL
+ chunk=NULL
+ progress=TRUE
+
 }

@@ -4,7 +4,7 @@
 \alias{hasHAGinfo}
 \title{hasGroundPoints}
 \usage{
-hasHAGinfo(ifiles, verbose = T)
+hasHAGinfo(ifiles, verbose = TRUE)
 }
 \arguments{
 \item{ifiles}{file name or character vector with file names to process}

@@ -55,6 +55,10 @@ process(ifiles, odir, gridfile)
 process(ifiles, odir, gridfile, T,T,T, 2)
 ```
 
+Notes
+
+Normalization will not change the Z values of the points but add the HAG (hight above ground) attribute. This allows to keep the ground absolute height and also the height of elements above the ground.
+
 ## Acknowledgements
 
 Part of this work is supported by the Wildfire CE Interreg Project, grant number CE0200934.
