@@ -15,8 +15,42 @@ for (p in pkgs) {
   library(p, character.only = TRUE, quietly = TRUE)
 }
 
-source(file.path(dirname(this.path()),   "checkVRTvalidity.R"))
+#' checkVRTvalidity
+#'
+#' @param filevrt path to VRT raster file
+#' @returns TRUE if all OK, FALSE otherwise
+#'
+#' @examples
+#' #
+checkVRTvalidity <- function(filevrt){
 
+  warns <- list()
+
+  # Capture warnings only
+  vrt <- withCallingHandlers(
+    tryCatch(
+      terra::rast(filevrt),
+      error = function(e) {
+        # Capture the error message
+        warns <<- c(warns, e$message)
+        return(NULL)  # return NULL if error occurs
+      }
+    ),
+    warning = function(w) {
+      # Capture all warnings
+      warns <<- c(warns, w$message)
+      invokeRestart("muffleWarning")  # works here inside withCallingHandlers
+    }
+  )
+
+  if(length(warns )!=0){
+    message_log("Problem with VRT file ", filevrt,
+                ", please remove it before continuing or figure out what is wrong with it\n",
+                paste(warns , collapse="\n<br>\n"),isWarning = T)
+    return(FALSE)
+  }
+  return(TRUE)
+}
 
 # 0. PARAMETERS ########
 
@@ -123,7 +157,7 @@ compute_pixel_metrics <- function(X,Y,Z) {
   ))
 }
 
-#### 2. FUNCTION: process one plot folder → one .tif with 7 bands ----
+# 2. FUNCTION: process one plot folder → one .tif with 7 bands ----
 
 #' process_plot
 #'
@@ -162,8 +196,11 @@ process_plot <- function(las_folder, template=NULL, force=FALSE) {
     }
 
   }
-  if (file.exists(out_file)) {
-    message("Skipping (already done): ", plot_name)
+  if (file.exists(out_file) && !force) {
+    message( "\033[32mSkipping (already done): ", plot_name, "
+...results available in:
+", file.path(getwd(), out_file) , ".
+Remove or use force=TRUE if you want to recalculate.\033[0m")
     return(invisible(NULL))
   }
 
@@ -196,7 +233,7 @@ process_plot <- function(las_folder, template=NULL, force=FALSE) {
   opt_chunk_buffer(ctg_local) <- resDTM*2
 
   # --- Read ground points only for DTM ---
-  message("  Computing DTM...")
+  message("Computing DTM...")
   dtm <- file.path(tmpFolders$tmp_Folder_DTMs, "rasterize_terrain.vrt")
   if(!file.exists(dtm)) {
     message("DTM NOT found - creating ...")
@@ -233,27 +270,37 @@ process_plot <- function(las_folder, template=NULL, force=FALSE) {
   }
 
   # --- Canopy metrics at 20m ----
-  message("  Computing canopy metrics...")
 
-  opt_output_files(las) <- paste0( tmpFolders$tmp_Folder_Metrics , "/z{*}_Met")
-  filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
-  opt_filter(las) <- filter
-  if(is.null(template) || !template){
-    metrics      <- pixel_metrics(las, ~compute_pixel_metrics(X,Y,Z),  res = res)
-  } else{
-    ## have to check CRS !!! -----
-    message(template)
-    metrics      <- template_metrics(las, ~compute_pixel_metrics(X,Y,Z),  template = template)
+  metrics <- list.files(pattern=".*\\.vrt$", tmpFolders$tmp_Folder_Metrics, full.names = T)
+  if(length(metrics)==0) {
+    message("Metrics NOT found - creating ...")
+    opt_output_files(las) <- paste0( tmpFolders$tmp_Folder_Metrics , "/z{*}_Met")
+    filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
+    opt_filter(las) <- filter
+    if(is.null(template) || !template){
+      metrics      <- pixel_metrics(las, ~compute_pixel_metrics(X,Y,Z),  res = res)
+    } else{
+      ## have to check CRS for template?!!! -----
+      metrics      <- template_metrics(las, ~compute_pixel_metrics(X,Y,Z),  template = template)
+    }
+  } else {
+    message("Metrics found...")
   }
+
+  if(!checkVRTvalidity(metrics)){
+    stop()
+  }
+
+
   ## convert metrics result to terra raster
-  metrics_rast <- rast(metrics)
+  metrics_rast <- terra::rast(metrics)
 
   # --- Assemble all bands ---
   if (!is.null(dtm)) {
-    slope_r  <- terrain(dtm,  v = "slope",  unit = "degrees")
-    aspect_r <- terrain(dtm,  v = "aspect", unit = "degrees")
+    slope_r  <- terrain(terra::rast(dtm),  v = "slope",  unit = "degrees")
+    aspect_r <- terrain(terra::rast(dtm),  v = "aspect", unit = "degrees")
 
-    dtm_r    <- resample(dtm,      metrics_rast, method = "bilinear")
+    dtm_r    <- resample(terra::rast(dtm),      metrics_rast, method = "bilinear")
     slope_r  <- resample(slope_r,  metrics_rast, method = "bilinear")
     aspect_r <- resample(aspect_r, metrics_rast, method = "bilinear")
 
@@ -268,7 +315,7 @@ process_plot <- function(las_folder, template=NULL, force=FALSE) {
 
   message("  Bands: ", nlyr(out_rast), " → ", paste(names(out_rast), collapse = ", "))
   writeRaster(out_rast, out_file, overwrite = TRUE)
-  message("  Saved: ", out_file)
+  message( "\033[32mSaved: ", file.path(getwd(), out_file) , "\033[0m")
 
   return(invisible(NULL))
 }
