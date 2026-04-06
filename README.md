@@ -8,7 +8,7 @@ Required libraries are automatically checked for and installed if needed.
 
 **Parallelization** tested in Linux for now.
 
-<img src="images/clipboard-2548723214.png" width="60%">
+<img src="images/clipboard-2548723214.png" width="90%">
 
 ## Usage
 
