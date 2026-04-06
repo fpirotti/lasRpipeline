@@ -1,63 +1,29 @@
 # lasRpipeline
 
-Provides wrapper functions for parallel processing using lasR of typical forestry lidar workflow, from raw point cloud to metrics in cells to allow for canopy fuel mapping to support fire behaviour modelling for\
-[Cells2Fire](https://github.com/cell2fire/Cell2Fire)
+Provides parallel processing using lidR for creating autoamatically topography, canopy fuel and fuel model raster from LAS files to support fire behaviour modelling. Objective is to make it as simple as possible but checking for pitfalls in the process.
 
-Please install [lasR](https://github.com/r-lidar/lasR), [lidR](https://github.com/r-lidar/lidR)
+Required libraries are automatically checked for and installed if needed.
 
-NB - this pipeline assumes you have a classified point cloud, without any noise points, so please use responsibly and provide a clean and classified point cloud.
+**NB** - this pipeline assumes you have a [classified]{.underline} point cloud, [with very limited noise]{.underline} points, so please use responsibly and provide a clean and classified point cloud.
 
-Parallelization only in linux for now.
+**Parallelization** tested in Linux for now.
 
-WORK IN PROGRESS...
+![](images/clipboard-2548723214.png){width="600"}
 
 ## Usage
 
-### Install required libraries
-
-``` r
-
-if(!require("lasR")) install.packages('lasR', repos = 'https://r-lidar.r-universe.dev')
-if(!require("devtools"))  install.packages("devtools")
-if(!require("lasRpipeline")) devtools::install_github("fpirotti/lasRpipeline")
-```
-
-### Setup path to data
+The script is '***process.R***' in the R folder. Open process.R and to the end of the script change two lines as below:
 
 ```{r}
-
-## just define input files and output directory - the processing will check if 
-## intermediate steps have already been taken care of and proceed to create a 
-## canopy fuel and topography 
-ifiles <- list.files("/archivio/shared/geodati/las/fvg/tarvisio/", pattern="(?i)\\.la(s|z)$", full.names = T )
-odir <- "/archivio/shared/geodati/las/fvg/tarvisiooutdir"
-
-## The following will be the grid that acts as a template where all results will be saved
-## so it leads the resolution and origin of the grid. Ideally it should be in the same
-## CRS of the point cloud.
-gridfile <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
+.....
+.....
+.....
+## just define input  directory 
+las_folder <- "/myfolderwithLASfiles"  
+## run and check messages
+process_plot(las_folder)
 
 ```
-
-### Run the process
-
-```{r}
-
-## check this function in this package... 
-
-?lasRpipeline::process
-## run one of the following:
-
-# normalize + create DTM DSM CHM and metrics at same resolution of gridfile
-process(ifiles, odir, gridfile) 
-
-# normalize + create DTM DSM CHM at 2 m resolution and metrics at same resolution of gridfile
-process(ifiles, odir, gridfile, T,T,T, 2)
-```
-
-Notes
-
-Normalization will not change the Z values of the points but add the HAG (hight above ground) attribute. This allows to keep the ground absolute height and also the height of elements above the ground.
 
 ## Acknowledgements
 

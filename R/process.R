@@ -1,629 +1,287 @@
-#' check_vrt_validity
-#'
-#' @param filevrt input files or directory with LAS/LAZ files
-#' @returns raster pointer if all OK, FALSE otherwise
-#'
-#' @examples
-#' #
-check_vrt_validity <- function(filevrt){
+# Authors: Francesco Pirotti, Shunjia Li
+#
+# START =====
+# Forest Fire Metrics from LiDAR Point Cloud → 20m Raster Output
+# Metrics: height, slope, aspect, canopyCover, canopyHeight, CBH, CBD
+# Method: Beer-Lambert / PAD vertical profile (Martin-Ducup et al. 2025)
 
-  warns <- list()
+pkgs <- c("terra", "stars", "lidR", "sf",   "tools", "future", "data.table", "this.path")
+for (p in pkgs) {
+  if (!requireNamespace(p, quietly = TRUE)) {
+    warning("Package \033[1m", p, "\033[0m not found... installing it.")
+    install.packages(p)
+  }
+  message("Package \033[1m", p, "\033[0m  found... loading it.")
+  library(p, character.only = TRUE, quietly = TRUE)
+}
 
-  # Capture warnings only
-  vrt <- withCallingHandlers(
-    tryCatch(
-      terra::rast(filevrt),
-      error = function(e) {
-        # Capture the error message
-        warns <<- c(warns, e$message)
-        return(NULL)  # return NULL if error occurs
+source(file.path(dirname(this.path()),   "checkVRTvalidity.R"))
+
+
+# 0. PARAMETERS ########
+
+output_dir   <- "output_rasters"
+
+dir.create(output_dir, showWarnings = FALSE)
+
+res          <- 10        # raster resolution (m) - strongly advised to be
+# between 1 and 30 m depending on lidar point spacing
+resDTM       <- 1         # resolution for terrain and for base for metrics
+layer_depth  <- 0.5       # vertical slice thickness (m)
+G_theta      <- 0.5       # leaf projection ratio (spherical assumption)
+omega        <- 0.77      # clumping index (Martin-Ducup et al. 2025)
+FMA          <- 0.25      # Fuel Mass Area kg/m²
+BD_threshold <- 0.02      # bulk density threshold for CBH (kg/m³)
+
+# 1. FUNCTION: compute canopy metrics for a single  pixel  ########
+compute_pixel_metrics <- function(X,Y,Z) {
+  z <- Z
+  nn <- floor(log10(length(z)))
+  if (nn <2) q = 0.90
+  if (nn==2) q = 0.95
+  if (nn==3) q = 0.99
+  if (nn==4) q = 0.999
+  if (nn >4) q = 0.9995
+
+  canopy_height <- as.numeric(quantile(z, q))
+  high <- which(z> canopy_height+0.5 )
+  if(length(high)>0){
+    X = X[-high]
+    Y = Y[-high]
+    Z = Z[-high]
+    z <- Z
+  }
+  ## 1x1 cubes
+  # lastmp <- suppressMessages( lidR::LAS(data.frame(X=X,Y=Y,Z=Z)) )
+  # vox_met <- voxel_metrics(lastmp, ~list(N = length(Z)), 1)
+  dt <- data.table::data.table(X=as.integer(X),
+                               Y=as.integer(Y),
+                               Z=as.integer(Z) )
+
+  vox_met <- dt[, .N, by = .(X,Y,Z)]
+
+  totArea <- nrow(unique(vox_met[,c("X","Y")]))
+  totAreaWithCanopy <- nrow(unique(vox_met[vox_met$Z>2,c("X","Y")]))
+  # zVox <- vox_met[vox_met$Z>=2,c("Z")][[1]]
+  # write.csv(vox_met, "voxmet.xyz", row.names = F)
+  #  plot(vox_met, color="N",  opacity=0.5, pal = colors,   voxel = TRUE)
+  canopy_cover  <- totAreaWithCanopy / totArea * 100
+
+  CBH <- NA_real_
+  CBD <- NA_real_
+
+  if (length(z) >= 10 && ceiling(max(z)) >= 2) {
+
+    max_h    <- ceiling(max(z))
+    # breaks   <- seq(0, max_h, by = layer_depth)
+    # Change to slicing starting from 1m, completely skipping the near-surface layer
+    breaks <- seq(1, max_h, by = layer_depth)
+    n_layers <- length(breaks) - 1
+
+    if (n_layers >= 3) {
+      layer_ids   <- cut(z, breaks = breaks, labels = FALSE, include.lowest = TRUE)
+      N_per_layer <- tabulate(layer_ids, nbins = n_layers)
+      N_cum <- cumsum(N_per_layer)
+      N_cum[N_cum == 0] <- NA
+      NRD         <- N_per_layer / N_cum
+      NRD[is.na(NRD)] <- 0
+
+      Gf  <- pmax(1 - NRD, 1e-6)
+      Gf  <- pmin(Gf, 1 - 1e-6)
+      PAD <- -log(Gf) / (G_theta * omega * layer_depth)
+      BD  <- PAD * FMA
+
+      heights       <- breaks[-length(breaks)] + layer_depth / 2
+
+      above1m       <- heights >= 1.0
+      BD_above      <- BD[above1m]
+      heights_above <- heights[above1m]
+      canopy        <- heights_above[BD_above >= BD_threshold]
+
+      if (length(canopy) > 0) {
+        ## @Shujia have to improve here, we are just taking the min value,
+        # CBH <- min(canopy)
+        CBH <- min(canopy)
+        #CBD <- max(BD_above[BD_above >= BD_threshold])
+        canopy_idx <- which(heights_above >= CBH)
+        if (length(canopy_idx) > 0) {
+          CFL <- sum(BD_above[canopy_idx]) * layer_depth
+          crown_length <- canopy_height - CBH
+          if (crown_length > 0) {
+            CBD <- CFL / crown_length
+          }
+        }
       }
-    ),
-    warning = function(w) {
-      # Capture all warnings
-      warns <<- c(warns, w$message)
-      invokeRestart("muffleWarning")  # works here inside withCallingHandlers
     }
-  )
-
-  if(length(warns )!=0){
-    message_log("Problem with VRT file ", filevrt,
-                ", please remove it before continuing or figure out what is wrong with it\n",
-                paste(warns , collapse="\n<br>\n"),isWarning = T)
-    return(FALSE)
   }
-  return(terra::rast(file.path(filevrt)))
+
+  return(list(
+    canopyCover  = canopy_cover,
+    canopyHeight = canopy_height,
+    CBH          = CBH,
+    CBD          = CBD
+  ))
 }
 
-#' check_dir_structure
-#'
-#' @param ifiles input files or directory with LAS/LAZ files
-#' @param odir output directory
-#'
-#' @returns TRUE if all OK
-#'
-#' @examples
-#' #
-check_dir_structure <- function(ifiles=NULL,
-                                odir=NULL ) {
+#### 2. FUNCTION: process one plot folder → one .tif with 7 bands ----
 
-  if(is.null(ifiles) || (!dir.exists(ifiles[[1]]) && !file.exists(ifiles[[1]]))){
-    message_log("Sorry but value of ",
-                cli::style_italic("ifiles") ,
-                " argument is neither valid files or valid directory",  isWarning = T)
-    return(NULL)
-  }
-
-  if(dir.exists(ifiles[[1]])) {
-    idir <- ifiles[[1]]
-    ifiles <- list.files(ifiles,
-                         pattern = lasRpipeline::get_cache("laspattern"),# "(?i)\\.la(s|z)$",
-                         full.names = T   )
-  } else {
-    idir <- dirname(ifiles[[1]])
-  }
-
-  if(length(ifiles)==0 ){
-    message_log("Zero LAS/LAZ files found in directory ", idir, isWarning = T )
-    stop("Zero LAS/LAZ files found in directory ", idir)
-  }
-  if(length(ifiles)!=length(file.exists(ifiles)) ){
-    message_log("Not all  LAS/LAZ files in exist - check that all files are in the right path ", isWarning = T )
-    stop("Not all  LAS/LAZ files in exist - check that all files are in the right path ")
-  }
-
-  if(!dir.exists(odir)){
-    if(basename(odir)==odir){
-      message_log("You provided only name, not path, to output directory, thus
-creating output directory ", odir, " in current working directory  ", getwd() )
-      dir.create(odir)
-    } else {
-      message_log("Creating output directory ", odir, " in current working directory  ", getwd() )
-      dir.create(odir)
-    }
-  } else {
-    message_log("Output directory ", odir, " exists, using it." )
-  }
-
-  if(!dir.exists(file.path(odir,"norm") ) ){
-    dir.create( file.path(odir,"norm") )
-    message_log("Creating  'norm' subdir in output directory." )
-  } else {
-    message_log("'norm' subdir in output directory exists, will overwrite contents only if user confirms." )
-  }
-  if(!dir.exists(file.path(odir,"dtm") ) ){
-    dir.create( file.path(odir,"dtm") )
-  }else {
-    message_log("'dtm' subdir in output directory exists, will overwrite contents only if user confirms." )
-  }
-  # if(!dir.exists(file.path(odir,"dsm") ) ){
-  #   dir.create( file.path(odir,"dsm") )
-  #   message_log("Creating  'dsm' subdir in output directory." )
-  # }else {
-  #   message_log("'dsm' subdir in output directory exists, will overwrite contents only if user confirms." )
-  # }
-  if(!dir.exists(file.path(odir,"chm") ) ){
-    dir.create( file.path(odir,"chm") )
-    message_log("Creating  'chm' subdir in output directory." )
-  }else {
-    message_log("'chm' subdir in output directory exists, will overwrite contents only if user confirms." )
-  }
-
-  return(TRUE)
-}
-
-
-
-#' process
-#' @description
-#' This will launch optimized processes using 20 plots per chunk and parallelization
+#' process_plot
 #'
-#' Works only in linux for now!
+#' @param las_folder the folder with
+#' @param template a raster defining the output  grid or NULL or FALSE
+#' @param force re-computes all intermediate steps!
 #'
-#' Plots are the centers of the raster cell where we want to calculate topography
-#' and canopy information.
-#'
-#' @param ifiles path with input las/laz files or specific list of las/laz files' path
-#' if not provided it will search the current working directory.
-#' @param odir path to output directory - if not provided it will create an "odir"
-#' directory with name "odir" in the current working directory.
-#' @param gridfile path to raster that is the template of your output - MUST
-#' overlap the lidar area of course
-#' @param create list with following
-#'   Must include:
-#'   \describe{
-#'     \item{createDTM}{Bolean: default = TRUE}
-#'     \item{createCHM}{Bolean: default = TRUE}
-#'   }
-#' @param  maxh integer, if set it will set a maximum height above the ground
-#' to consider it as vegetation.
-#'
-#' @param forceRes default = NULL - if number is given, it will force resolution
-#' of the output intermediate rasters (DTM CHM) to this value, otherwise it will
-#'  use the resolution of raster in \code{gridfile}
-#'
-#' @param verbose Boolean default = TRUE - print lots of messages.
-#'
-#' @param ncores An object returned by one of \code{sequential()},
-#'   \code{concurrent_points()}, \code{concurrent_files()}, or \code{nested()}.
-#'   If \code{NULL} the default it will calculate how many
-#' concurrent LAS files to process by trying to check the RAM and number of cores
-#' and divide it by the maximum size of LAS files. If a simple integer is provided
-#'   it corresponds to \code{concurrent_files(ncores)}.
-#'
-#' @param progress Boolean. Displays a progress bar.
-#'
-#' @param buffer Numeric. Each file is read with a buffer. The default is
-#'   \code{NULL}, which does not mean that the file will not be buffered.
-#'   It means that the internal routine determines whether a buffer is needed
-#'   and will pick the greatest value between its internal suggestion and this
-#'   user-supplied value.
-#'
-#' @param chunk Numeric. By default, files are processed one by one
-#'   (\code{chunk = NULL} or \code{chunk = 0}). It is possible to process in
-#'   arbitrary-sized chunks. This is useful for processing collections with
-#'   large files or for handling massive \code{copc} files.
-#'
-#'
-#' @returns a terra raster object also written to a file tif with time and date,
-#' written to the odir e.g.  "gridOut20250811_094743.tif"
-#' The TIF file will have seven layers, with:
-#'  - terrain height/slope/aspect
-#'  - canopy cover (0-100 percent)
-#'  - canopy height (95th percentile)
-#'  - crown base height (m)
-#'  - canopy bulk density (kg/m3)
-#'
+#' @returns a DTM in tiles with a VRT file, normalized LAZ files and metrics
 #' @export
 #'
 #' @examples
-#'  #
-#'
-#'  create = list(
-#'  createDTM = TRUE,
-#'  createCHM = TRUE
-#'  )
-#'  maxh = 60
-#'  forceRes = 1
-#'  verbose=TRUE
-#'  buffer=NULL
-#'  ncores=NULL
-#'  chunk=NULL
-#'  progress=TRUE
-#'
-process <- function(ifiles=NULL,
-                    odir=NULL,
-                    gridfile=NULL,
-                    create = list(
-                      createDTM = TRUE,
-                      createCHM = TRUE
-                    ),
-                    maxh = NULL,
-                    forceRes = NULL,
+process_plot <- function(las_folder, template=NULL, force=FALSE) {
 
-                    verbose=TRUE,
-                    progress=TRUE,
-                    ncores=NULL,
-                    buffer=NULL,
-                    chunk=NULL
-                    ) {
 
-  if(is.null(check_dir_structure(ifiles, odir))) return(NULL)
-  ## check input las files ----
-
-  ## creato catalog lidR ----
-  if(file.exists(file.path(odir,"projectData.rda"))){
-    message_log("Loading cataloque from past processing:  " , file.path(odir,"projectData.rda") , " - remove file if it is not intended", verbose=verbose)
-    load(file.path(odir,"projectData.rda"))
-  } else{
-    message_log("Creating and saving cataloque with " , length(ifiles) , " files.",verbose = verbose)
-    ctg <- lidR::catalog(ifiles)
-    save(ctg, file=file.path(odir,"projectData.rda"))
+  if(!exists("res")) {
+    stop("Setup parameters in head of script")
   }
-
-  ## Checking Ground points exist ----
-  message_log("Checking that point cloud contains ground points (class=2)...",verbose = verbose)
-  gp.ratio <- hasGroundPoints(ctg)
-  message_log("Ground points ", round(gp.ratio*100, 3), "%",verbose = verbose)
-  if (gp.ratio< 0.000000000001) {
-    message_log("No points with ground class found, or too liPlease classify ground points with your favorite method before continuing. This tool requires that the point cloud contains classified ground points (class=2) ",verbose = verbose)
-    stop("No ground class found")
-  }
-
-  ## set number of cores ----
-  ## depending on the size of the files
-  sc <- ifelse( is.null(ncores),
-                auto_set_lasR_cores(ctg, verbose=verbose),   # auto-detect safe number of cores
-                ncores)
-
-
-  lasR::set_exec_options(
-    progress = progress,
-    ncores   = lasR::concurrent_files(sc),
-    buffer=buffer,
-    chunk=chunk
+  plot_name <- basename(las_folder)
+  out_file  <- file.path(output_dir, paste0(plot_name, "_metrics.tif"))
+  tmp_Folder  <- file.path(las_folder, "tmp")
+  tmpFolders <- list(
+    tmp_Folder_DTMs  = file.path(tmp_Folder, "DTMs"),
+    tmp_Folder_Norm  = file.path(tmp_Folder, "NormLAS"),
+    tmp_Folder_Metrics  = file.path(tmp_Folder, "Metrics")
   )
 
-  ## Add LAX files if missing ----
-  message_log("Adding LAX files if they are missing... LAX files are indices that improve processing of LAS point clouds ",verbose = verbose)
-  res <- lasR::exec(lasR::write_lax(), on = ctg )
-
-
-  ## Normalize keeping z in HAG ----
-  message_log("Normalizing keeping z but adding height above ground info in extra byte!",verbose = verbose)
-  normFiles <- lasRpipeline::normalize(ctg, file.path(odir, "norm") )
-
-  ctg.norm <- lidR::catalog(normFiles)
-  ctg_summary <- utils::capture.output(print(ctg.norm))
-  pretty_message <- paste(ctg_summary, collapse = "\n")
-  message_log(cli::style_bold("\nDATA BEING PROCESSED IN LIDAR FILES:\n"), pretty_message )
-
-
-  message_log("Adding LAX files to normalized points if missing",verbose = verbose)
-  res <- lasR::exec(lasR::write_lax(), on = normFiles )
-
-
-
-  ## Define Grid from template ogrid ----
-  grid <- terra::rast(gridfile)
-  sizeOfGrid <- terra::res(grid)[[1]]
-
-  ## Creating base output raster  ----
-  message_log("Creating base output raster")
-  gridOut <- terra::rast(grid, nlyrs = 7)
-  gridOut[] <- NA
-  names(gridOut) <- c("height", "slope", "aspect",
-                      "canopyCover", "canopyHeight",
-                      "CBH", "CBD")
-
-  ## boundaries and/or DTM -----------
-  # here is a bit complex as we pipe them both if both are requested,
-  # to save memory
-
-  ## this is to check if to add DTM DSM CHM -----------
-# applyPipelineFun <- function(){
-
-    ## we keep two separate pipelines, one for original LAS files,
-    ## and one for normalized LAS files
-    outnames <- c()
-    outnamesn <- c()
-
-    read <- lasR::reader()
-    tri <- lasR::triangulate(0, filter = lasR::keep_ground())
-    pipeline <- read
-    pipelinen <- read
-
-    if(!is.null(forceRes)) res <- forceRes  else res <- sizeOfGrid
-
-    ## DTM ----
-    if(create$createDTM){
-      dtm = lasR::rasterize(res, tri, ofile = file.path(odir, "dtm", "*.tif") )
-
-      if (file.exists(file.path(odir, "DTM.vrt")) ){
-
-        vrt <- check_vrt_validity(file.path(odir, "DTM.vrt"))
-
-        if(!inherits(vrt, "SpatRaster")) stop()
-
-        if (ask_user(paste0("DTM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-          message_log("Adding creation of DTM to pipeline!")
-          pipeline <- pipeline + tri + dtm
-          outnames<- c(outnames , "dtm")
-        } else {
-          message_log("Skipping creation of DTM - if you want to force it just remove the files in DTM folder and the DTM.vrt file")
-        }
-      } else {
-        pipeline <- pipeline + tri + dtm
-        outnames<- c(outnames , "dtm")
-        message_log("Adding DTM to pipeline", verbose=verbose )
+  for(fold in names(tmpFolders)){
+    message("Checking for ", fold)
+    if (!dir.exists(tmpFolders[[fold]])) {
+      dir.create(tmpFolders[[fold]],mode = "777")
+    } else {
+      if(force){
+        message("Removing ", fold)
+        unlink(list.files(tmpFolders[[fold]], full.names = TRUE) )
       }
-
     }
 
-    ## CHM ----
-    if(create$createCHM){
-      # chm = lasR::chm(res, tin = TRUE, ofile = file.path(odir, "chm", "*.tif") )
-      if(!hasHAGinfo(normFiles)){
-        message_log("Cannot create CHM because there is no 'HAG' (height above ground) attribute. Please run normalize first", isWarning = T )
-        return(NULL)
-      }
-
-      if(!is.null(maxh)){
-        if(is.na(as.numeric(maxh))){
-          message_log( sprintf("maxh parameter (%s) should be numeric!", maxh), isWarning = T )
-          return(NULL)
-        }
-        chm =  lasR::rasterize(res, operators = c("HAG_max"), filter = sprintf("HAG < %f", maxh)  )
-      } else {
-        chm =  lasR::rasterize(res, operators = c("HAG_max")  )
-      }
-
-      chm2 =  lasR::pit_fill(chm, ofile = file.path(odir, "chm", "*.tif") )
-
-      if (file.exists(file.path(odir, "CHM.vrt")) ){
-
-        vrt <- check_vrt_validity(file.path(odir, "CHM.vrt"))
-        if(!inherits(vrt, "SpatRaster")) stop()
-
-        if(!is.null(vrt)){
-
-          if (ask_user(paste0("CHM with resolution of ", terra::res(vrt)[[1]]," m  exists, you want to overwrite?") )) {
-            message_log("Adding creation of CHM to pipeline - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-            pipeline <- pipeline  + chm + chm2
-            outnames<- c(outnames ,"intermediateCHM", "chm")
-            message_log("Adding pit-fill CHM to pipeline", verbose=verbose )
-          } else {
-            message_log("Skipping creation of CHM - if you want to force it just remove the files in CHM folder and the CHM.vrt file")
-          }
-        } else {
-          pipeline <- pipeline + chm + chm2
-          outnames<- c(outnames ,"intermediateCHM", "chm")
-          message_log("Adding pit-fill CHM to pipeline", verbose=verbose )
-        }
-
-      } else {
-        pipeline <- pipeline + chm + chm2
-        outnames<- c(outnames , "intermediateCHM", "chm")
-        message_log("Adding pit-filled-CHM to pipeline", verbose=verbose )
-      }
-
-    }
-
-
-    ## Creating Boundary  ----
-    if (!file.exists(file.path(odir, "boundaries.gpkg"))) {
-      message_log("Creating boundary, might take some time")
-      if(!exists("tri")){
-        contour <- lasR::hulls(tri, file.path(odir, "boundaries.gpkg") )
-      }
-      pipeline <- pipeline + tri + contour
-      outnames<- c(outnames , "hulls")
-    }
-
-    ## PROCESSING!!  ----
-    # if(length(pipeline)==2){
-    #   message_log("Nothing to create, all already processed.")
-    #   return(NULL)
-    # }
-
-      message_log("Starting process on n.",
-                  cli::style_bold(length(normFiles)),
-                  " files, on a machine with n.",
-                  cli::style_bold(lasR::half_cores()*2),
-                  " cores, using  n.",
-                  cli::style_bold(sc),
-                  " concurrent files, on a raster with resolution of ",
-                  cli::style_bold(res),
-                  " m might take some time ...")
-
-      # read <- lasR::reader()
-      # tri <- lasR::triangulate(max(10, res*3), filter = lasR::keep_ground())
-      # pipelineIn2 <- read + tri + dsm + chm
-
-
-      # normFilesCtg <- lidR::catalog(normFiles)
-#
-#       download.file("https://www.cirgeo.unipd.it/shared/lazs.zip",
-#                     destfile = "lazs.zip")
-#       unzip("lazs.zip")
-#       f <- list.files(pattern = "(?i)\\.la(s|z)$")
-#       chm =  lasR::rasterize(2, operators = c("HAG_max"),
-#                              ofile = file.path("*.tif") )
-   pipeline <- lasR::reader() + chm
-   ans <- lasR::exec(pipeline, on = ctg.norm   )
-#
-#         ansn <- lasR::exec(pipelinen,
-#                           on = ctg.norm  )
-
-# browser()
-
-      if(is.list(ans)) {
-        if(length(outnames)!=length(ans)){
-          message_log("Problem with output of parallel execution: ", ans,
-                      isWarning = T)
-          browser()
-          return(NULL)
-        }
-        names(ans) <- outnames
-
-      }
-
-      for(i in names(ans)){
-        if(i=="hulls") {
-          sf::write_sf(sf::st_union( ans$hulls),
-                       file.path(odir, "boundaries.gpkg"), append = FALSE)
-
-          message_log("Boundary file boundaries.gpkg in output directory: ",
-                      cli::style_hyperlink(file.path(odir,"boundaries.gpkg"),
-                                           paste0("file://",file.path(odir,"boundaries.gpkg") ) ) )
-          next
-        }
-        if( length(ans[[i]]) > 1 &&
-            length( unique( tools::file_ext(ans[[i]]) ) ) == 1 &&
-            tolower( unique( tools::file_ext(ans[[i]]) ) )=="tif" ){
-          oo <- file.path(odir, filename=sprintf("%s.vrt",toupper(i) ) )
-          vrt <- terra::vrt(ans[[i]], oo, overwrite=T)
-          message_log("Tiles ",toupper(i)," nella cartella '",i,"' e File ",toupper(i),".vrt creato nella cartella ",
-                      cli::style_hyperlink(file.path(odir), paste0("file://",file.path(odir) ) ) )
-
-
-          if(inherits(check_vrt_validity(oo), "SpatRaster") ){
-            ovr <- c(2, 4, 8, 16, 32, 64)
-            sf::gdal_addo(oo, overviews = ovr, read_only = TRUE)
-          } else{
-            message_log("File ", oo  ," is not valid raster! ",
-                        isWarning = T)
-          }
-
-        }
-
-      }
-
-  # }
-## applyPipelineFun end
-
-  # ccc <- function(data )
-  # {
-  #   summary(data$HAG)
-  #   browser()
-  #   i <- data
-  #   return(data)
-  # }
-  # call <- callback(ccc, expose = "E")
-
-
-  # ans <- lasR::exec(pipeline, on = normFiles[2])
-
-  message_log(  "finished!!!!!!!!!!!!!!!!!!!!!!!"  )
-  return(NULL)
-
-  ### nothing to do below here ---------
-  # applyPipelineFun()
-
-  message_log(  "Reading boundary"  )
-  boundary <- sf::read_sf(file.path(odir, "boundaries.gpkg"))
-  message_log("Getting values of centers of cells")
-  # grid2 <- terra::disagg(grid, 3)
-
-
-  return(NULL)
-
-  message_log("START")
-  tv <- terra::values(grid, mat = F)
-  grid[tv < 100 | tv > 190] <- NA
-  cellids <- terra::cells(grid)
-
-  message_log(cli::style_bold(format(length(cellids),big.mark = "'") ) , " cells to process!")
-  centers <- terra::xyFromCell(grid, cellids)
-
-
-  message_log("Converting to simple features to transform between CRS")
-  points_sf <- sf::st_as_sf(as.data.frame(centers),
-                            coords = c("x", "y"),
-                            crs = terra::crs(grid))
-
-  message_log("Transforming")
-  points_sf_crsPoints <- sf::st_transform(points_sf, lidR::crs(ctg))
-
-  points_sf_crsPoints$cellID <- cellids
-
-
-
-  message_log("Keeping only points that intersect the hull of the points")
-  dd <- sf::st_intersects(points_sf_crsPoints, boundary, sparse =  FALSE)
-
-  points_sf_crsPoints_overlap <-  points_sf_crsPoints[dd[,1], ]
-
-  points_sf_crsPoints_overlap_coords <- as.data.frame(sf::st_coordinates(points_sf_crsPoints_overlap))
-  points_sf_crsPoints_overlap_coords$id <- points_sf_crsPoints_overlap$cellID
-  ##STRATEGY FOR PARALLELIZE AS INJECTED R CODE (function fuelMetrics)
-  ## will not be parallel in lasR - but we need to split the many cells not the
-  ## lidar chunck so we do it ourselves
-
-
-  message_log("DONE")
-
-  return(NULL)
-  chunkProcess <- function(points_sf_crsPoints_overlap_coords_chunk) {
-
-    read <- lasR::reader_circles(
-      points_sf_crsPoints_overlap_coords_chunk[, 1],
-      points_sf_crsPoints_overlap_coords_chunk[, 2],
-      sizeOfGrid / 1.8
-    )
-
-    metrics <-  lasR::callback(
-      fuelMetrics,
-      expose = "xyzcE",
-      drop_buffer = T,
-      no_las_update = T
-    )
-
-    pipeline <- read  + metrics
-
-    ans <- lasR::exec(
-      pipeline,
-      on = ctg.norm@data$filename,
-      progress = F,
-      ncores = 1
-    )
-
-    # plot(points_sf_crsPoints_overlap[1:10,], add=T)
-    # plot(ans)
-    ans
+  }
+  if (file.exists(out_file)) {
+    message("Skipping (already done): ", plot_name)
+    return(invisible(NULL))
   }
 
-  pointsPerChunk <- 20
+  message("Processing: ", plot_name)
 
-  chunks <- split(points_sf_crsPoints_overlap_coords,
-                  ceiling(seq_len(
-                    nrow(points_sf_crsPoints_overlap_coords)
-                  ) / pointsPerChunk))
+  message("READ CATALOG: ")
+
+  # --- Read catalog ----
+  ctg_local <- tryCatch(
+    readLAScatalog(las_folder),
+    error = function(e) { message("  Error reading catalog: ", e$message); return(NULL) }
+  )
+  if (is.null(ctg_local)) return(invisible(NULL))
 
 
-  are.null <- rep(T, length(chunks))
-  finalRes <- list()
-  oldAreNulls <- 0
-  tries <- 0
-  while (sum(are.null) != 0) {
-    if (oldAreNulls == sum(are.null)) {
-      tries <- tries + 1
-      if (tries > 2) {
-        break
-      }
-      message_log("Still same remaining chunks ...",
-                  sum(are.null),
-                  " will try one more time")
-    }
-    message_log("Remaining chunks ...", sum(are.null))
 
-    fres <-  parallel::mclapply(names(chunks[are.null]),
-                                mc.cores = min(length(chunks),
-                                               lasR::half_cores()-1),
-                                function(chunkID) {
-      chunk <- chunks[[as.character(chunkID)]]
-      res <- chunkProcess(chunk)
-      res <- cbind(do.call(rbind, res), chunk$id)
-      res
-    })
+  cores <- min(ceiling(abs(future::availableCores()/2-1)), nrow(ctg_local@data))
 
-    names(fres) <- names(chunks[are.null])
-    are.null <- sapply(fres, function(x) {
-      is.null(x) || inherits(x, "error") || inherits(x, "try-error")
-    })
-
-    finalRes[names(fres)[which(!are.null)]] <- fres[which(!are.null)]
+  message("Running on ", Sys.info()["sysname"])
+  if (supportsMulticore()) {
+    message("Using MultiCore as it is supported ")
+    plan(multicore, workers = cores)
+  } else {
+    message("Using multisession not using multiCore -
+\033[1;31mif on linux and you want to use multiCore then make sure you don't run from RStudio\033[0m")
+    plan(multisession, workers = cores)
   }
 
-  fres2 <-  lapply(finalRes, function(x) {
-    tryCatch({
-      as.data.frame(x)
-    }, warning = function(e){
-      browser()
-    })
-  })
+  message("resDTM * 2 buffer: ", resDTM*2)
+  opt_chunk_buffer(ctg_local) <- resDTM*2
 
-  fres3 <- data.table::rbindlist(fres2)
+  # --- Read ground points only for DTM ---
+  message("  Computing DTM...")
+  dtm <- file.path(tmpFolders$tmp_Folder_DTMs, "rasterize_terrain.vrt")
+  if(!file.exists(dtm)) {
+    message("DTM NOT found - creating ...")
+    opt_output_files(ctg_local) <- paste0(tmpFolders$tmp_Folder_DTMs, "/z{*}_DTM")
+    dtm <- tryCatch(
+      rasterize_terrain(ctg_local, res = resDTM, algorithm =  tin()),
+      error = function(e) { message("  DTM create error: ", e$message); return(NULL) }
+    )
+  }
 
-  points_sfOut <- sf::st_as_sf(as.data.frame(fres3),
-                            coords = c("V1", "V2"),
-                            crs= lidR::crs(ctg)  )
+  if(!checkVRTvalidity(dtm)){
+    stop()
+  }
+  dtm <-   stars::read_stars(dtm)
+  # --- Height normalization ---
+  message("Normalize heights...")
+  opt_output_files(ctg_local) <- paste0(tmpFolders$tmp_Folder_Norm, "/{*}_Norm")
+  las <- tryCatch(
+    suppressWarnings(lidR::catalog( tmpFolders$tmp_Folder_Norm )),
+    warning = function(e) { message("Cannot read normalized folder: ", e$message); return(NULL) },
+    error = function(e) { message("Cannot read normalized folder: ", e$message); return(NULL) }
+  )
 
-  points_sf_crsPoints_out <- sf::st_transform(points_sfOut, crs = terra::crs(grid))
-  cc<-sf::st_coordinates(points_sf_crsPoints_out)
+  # NORMALIZE ----
+  if (is.null(las) || nrow(ctg_local@data)!=nrow(las@data) ) {
+    message("Normalize start...")
+    opt_laz_compression(ctg_local) <- TRUE
+    las <- tryCatch(
+      normalize_height(ctg_local, algorithm = tin(),
+                       dtm = dtm), #algorithm = knnidw() ),
+      error = function(e) { message("  Normalization error: ", e$message); return(NULL) }
+    )
+    if (is.null(las)) return(invisible(NULL))
+  }
 
-  gridOut[[1]][fres3$V6] <- cc[,1]
-  gridOut[[2]][fres3$V6] <- cc[,2]
-  gridOut[[3]][fres3$V6] <- fres3$V3
-  gridOut[[4]][fres3$V6] <- fres3$V4
-  gridOut[[5]][fres3$V6] <- fres3$V5
-  gridOut[[6]][fres3$V6] <- fres3$V6
-  terra::writeRaster(gridOut,
-                     file.path(odir,
-                               paste0("gridOut",
-                                      format(Sys.time(), "%Y%m%d_%H%M%S"),
-                                      ".tif") ), overwrite=T)
-  gridOut
+  # --- Canopy metrics at 20m ----
+  message("  Computing canopy metrics...")
+
+  opt_output_files(las) <- paste0( tmpFolders$tmp_Folder_Metrics , "/z{*}_Met")
+  filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
+  opt_filter(las) <- filter
+  if(is.null(template) || !template){
+    metrics      <- pixel_metrics(las, ~compute_pixel_metrics(X,Y,Z),  res = res)
+  } else{
+    ## have to check CRS !!! -----
+    message(template)
+    metrics      <- template_metrics(las, ~compute_pixel_metrics(X,Y,Z),  template = template)
+  }
+  ## convert metrics result to terra raster
+  metrics_rast <- rast(metrics)
+
+  # --- Assemble all bands ---
+  if (!is.null(dtm)) {
+    slope_r  <- terrain(dtm,  v = "slope",  unit = "degrees")
+    aspect_r <- terrain(dtm,  v = "aspect", unit = "degrees")
+
+    dtm_r    <- resample(dtm,      metrics_rast, method = "bilinear")
+    slope_r  <- resample(slope_r,  metrics_rast, method = "bilinear")
+    aspect_r <- resample(aspect_r, metrics_rast, method = "bilinear")
+
+    out_rast        <- c(dtm_r, slope_r, aspect_r, metrics_rast)
+    names(out_rast) <- c("height", "slope", "aspect",
+                         "canopyCover", "canopyHeight", "CBH", "CBD")
+  } else {
+    message("  DTM unavailable, saving 4 canopy bands only...")
+    out_rast        <- metrics_rast
+    names(out_rast) <- c("canopyCover", "canopyHeight", "CBH", "CBD")
+  }
+
+  message("  Bands: ", nlyr(out_rast), " → ", paste(names(out_rast), collapse = ", "))
+  writeRaster(out_rast, out_file, overwrite = TRUE)
+  message("  Saved: ", out_file)
+
+  return(invisible(NULL))
 }
 
+# 3. RUN -----
+
+#
+las_folder <- "/archivio/shared/geodati/las/fvg/tarvisio/"
+wd <- getwd()
+setwd(las_folder)
+## this below in case we have a raster to use as template
+## NB CRS should be the same as LAS!
+# template <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
+process_plot("/archivio/shared/geodati/las/fvg/tarvisio/", FALSE,FALSE)
+setwd(wd)
 
