@@ -4,11 +4,11 @@ Provides parallel processing using lidR for creating autoamatically topography, 
 
 Required libraries are automatically checked for and installed if needed.
 
-**NB** - this pipeline assumes you have a [classified]{.underline} point cloud, [with very limited noise]{.underline} points, so please use responsibly and provide a clean and classified point cloud.
+| **NB** - this pipeline assumes you have a [classified]{.underline} point cloud in a [projected]{.underline} coordinate system (no geographic polar coordinates), [with very limited noise]{.underline} points, so please use responsibly and provide a clean and classified point cloud.
 
 **Parallelization** tested in Linux for now.
 
-![](images/clipboard-2548723214.png){width="600"}
+<img src="images/clipboard-2548723214.png" width="60%">
 
 ## Usage
 
