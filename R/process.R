@@ -215,6 +215,10 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
   )
   if (is.null(ctg_local)) return(invisible(NULL))
 
+  if (isTRUE(st_is_longlat(st_crs(ctg_local)))) {
+    message("LAS is in geographic coordinates (lat/long) — not suitable - please provide projected points (work in progress for automatic conversion).")
+    return(invisible(NULL))
+  }
 
 
   cores <- min(ceiling(abs(future::availableCores()/2-1)), nrow(ctg_local@data))
