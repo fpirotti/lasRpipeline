@@ -5,7 +5,7 @@
 # Metrics: height, slope, aspect, canopyCover, canopyHeight, CBH, CBD
 # Method: Beer-Lambert / PAD vertical profile (Martin-Ducup et al. 2025)
 
-pkgs <- c("terra", "stars", "lidR", "sf",   "tools", "future", "data.table", "this.path")
+pkgs <- c("terra", "stars", "ggplot2", "lidR", "sf", "cli",   "tools", "future", "data.table", "this.path")
 for (p in pkgs) {
   if (!requireNamespace(p, quietly = TRUE)) {
     warning("Package \033[1m", p, "\033[0m not found... installing it.")
@@ -15,6 +15,10 @@ for (p in pkgs) {
   library(p, character.only = TRUE, quietly = TRUE)
 }
 
+getPixelArea <- function(x){
+  pixel_area <- abs(res(x)[[1]] * res(x)[[2]])
+  pixel_area
+}
 #' checkVRTvalidity
 #'
 #' @param filevrt path to VRT raster file
@@ -185,17 +189,17 @@ process_plot <- function(las_folder, template=NULL, force=FALSE) {
   )
 
   for(fold in names(tmpFolders)){
-    message("Checking for ", fold)
+    message("Checking for existance of ",  tmpFolders[[fold]] )
     if (!dir.exists(tmpFolders[[fold]])) {
-      dir.create(tmpFolders[[fold]],mode = "777")
+      dir.create(tmpFolders[[fold]],mode = "777", recursive = T, showWarnings = FALSE)
     } else {
       if(force){
         message("Removing ", fold)
         unlink(list.files(tmpFolders[[fold]], full.names = TRUE) )
       }
     }
-
   }
+
   if (file.exists(out_file) && !force) {
     message( "\033[32mSkipping (already done): ", plot_name, "
 ...results available in:
@@ -221,7 +225,7 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
   }
 
 
-  cores <- min(ceiling(abs(future::availableCores()/2-1)), nrow(ctg_local@data))
+  cores <- min(100, ceiling(abs(future::availableCores()/2-1)), nrow(ctg_local@data))
 
   message("Running on ", Sys.info()["sysname"])
   if (supportsMulticore()) {
@@ -236,7 +240,7 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
   message("resDTM * 2 buffer: ", resDTM*2)
   opt_chunk_buffer(ctg_local) <- resDTM*2
 
-  # --- Read ground points only for DTM ---
+  # DTM ----
   message("Computing DTM...")
   dtm <- file.path(tmpFolders$tmp_Folder_DTMs, "rasterize_terrain.vrt")
   if(!file.exists(dtm)) {
@@ -246,6 +250,11 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
       rasterize_terrain(ctg_local, res = resDTM, algorithm =  tin()),
       error = function(e) { message("  DTM create error: ", e$message); return(NULL) }
     )
+     # terra::vrt(list.files(tmpFolders$tmp_Folder_DTMs, full.names = T),
+     #            filename=dtm)
+    dtm <- file.path(tmpFolders$tmp_Folder_DTMs, "rasterize_terrain.vrt")
+  } else {
+    message("##### DTM already available! ...")
   }
 
   if(!checkVRTvalidity(dtm)){
@@ -261,7 +270,7 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
     error = function(e) { message("Cannot read normalized folder: ", e$message); return(NULL) }
   )
 
-  # NORMALIZE ----
+  # NORMALIZE -----
   if (is.null(las) || nrow(ctg_local@data)!=nrow(las@data) ) {
     message("Normalize start...")
     opt_laz_compression(ctg_local) <- TRUE
@@ -270,7 +279,12 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
                        dtm = dtm), #algorithm = knnidw() ),
       error = function(e) { message("  Normalization error: ", e$message); return(NULL) }
     )
-    if (is.null(las)) return(invisible(NULL))
+    if (is.null(las)) {
+      plan(sequential)
+      return(invisible(NULL))
+    }
+  } else {
+    message("#### Normalization already available! ...")
   }
 
   # --- Canopy metrics at 20m ----
@@ -281,17 +295,72 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
     opt_output_files(las) <- paste0( tmpFolders$tmp_Folder_Metrics , "/z{*}_Met")
     filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
     opt_filter(las) <- filter
-    if(is.null(template) || !template){
+    if(is.null(template) || template==FALSE){
       metrics      <- pixel_metrics(las, ~compute_pixel_metrics(X,Y,Z),  res = res)
     } else{
-      ## have to check CRS for template?!!! -----
-      metrics      <- template_metrics(las, ~compute_pixel_metrics(X,Y,Z),  template = template)
+      ## VERY IMPORTANT -
+      # IF YOU PROVIDE A RASTER TEMPLATE, IT FORCES TO CALCULATE CANOPY FUELS OVER
+      # EACH PIXEL.
+      pathtemplate <- template
+      template <- terra::rast(template)
+      message("Converting to points, might take a while...")
+
+      extsLAS <- lidR::ext(las) |>  terra::vect() |> st_as_sf() |> sf::st_set_crs(lidR::crs(las))
+      crsLAS <- st_crs(extsLAS, parameters=T)
+      extsLAS <-  extsLAS |>  sf::st_transform(sf::st_crs(template))
+      extsRast <- terra::ext(template) |>  terra::vect() |> st_as_sf() |> sf::st_set_crs( sf::st_crs(template))
+      extsLAS$name <- sprintf("LASCatalog CRS %s", crsLAS[["srid"]])
+      extsRast$name <- sprintf("raster CRS %s", sf::st_crs(extsRast, parameters=T)[["srid"]])
+
+      png("extents.png")
+      p<-ggplot(data = rbind(extsLAS, extsRast)) +
+        geom_sf(aes(color =name), fill = NA, linewidth = 1) +
+        theme_light() +
+        labs(color = "Class Borders")
+      print(p)
+      dev.off()
+
+      pp <- file.path(getwd(), "extents.png")
+       cli_inform(
+        col_green(" ### plotted extents to file you can see it in {.run [{pp}](utils::browseURL('{pp}'))}")
+        )
+
+
+       if( st_area(extsRast) > st_area(extsLAS) ) {
+         clipped <- sprintf("%s_clipped.tif", file.path(
+           dirname(pathtemplate),
+            tools::file_path_sans_ext(
+              basename(pathtemplate)    )
+                            ) )
+         cli_inform("Area of raster bigger so we clip it - you can find clipped version in {.run [{clipped}](utils::browseURL('{clipped}'))} ")
+         template  <- terra::crop(template, extsLAS)
+         writeRaster(template, clipped, overwrite=T )
+         plot(template )
+       }
+
+      p_sfs <- terra::as.data.frame( template, cells=TRUE, xy=T, na.rm=T)
+      p_sf_in <- sf::st_as_sf(p_sfs[, c("x","y", "cell")], coords=c("x","y"),
+                           crs=sf::st_crs(template) )
+
+      message(nrow(p_sf_in), " points    overlap extents of raster." )
+      if(st_crs(p_sf_in) != st_crs(las)){
+         p_sf_in <- p_sf_in |> sf::st_transform(st_crs(las))
+      }
+
+      opt_output_filename(las) <- ""
+      metrics      <- lidR::plot_metrics(las, ~compute_pixel_metrics(X,Y,Z),
+                                          geometry=p_sf_in,
+                                          radius= (getPixelArea(template)/pi)^0.5 )
+
+      browser()
     }
   } else {
+    metrics <- list.files(pattern=".*\\.vrt$", tmpFolders$tmp_Folder_Metrics, full.names = T)
     message("Metrics found...")
   }
 
   if(!checkVRTvalidity(metrics)){
+    plan(sequential)
     stop()
   }
 
@@ -320,8 +389,8 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
   message("  Bands: ", nlyr(out_rast), " → ", paste(names(out_rast), collapse = ", "))
   writeRaster(out_rast, out_file, overwrite = TRUE)
   message( "\033[32mSaved: ", file.path(getwd(), out_file) , "\033[0m")
-
-  return(invisible(NULL))
+  plan(sequential)
+  return(NULL)
 }
 
 # 3. RUN -----
@@ -332,7 +401,7 @@ wd <- getwd()
 setwd(las_folder)
 ## this below in case we have a raster to use as template
 ## NB CRS should be the same as LAS!
-# template <- "/archivio/shared/R/wildfire/input/AT-IT_ScottBurganFuelMapClassV2.tif"
-process_plot("/archivio/shared/geodati/las/fvg/tarvisio/", FALSE,FALSE)
+template <- "/archivio/shared/geodati/raster/wildfire/pilotRegions_AT-IT-SI_canopy_canopyBaseHeight.tif"
+process_plot("/archivio/shared/geodati/las/fvg/tarvisio/", template = template,force = F)
 setwd(wd)
 
