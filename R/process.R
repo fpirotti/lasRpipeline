@@ -347,7 +347,8 @@ Remove or use force=TRUE if you want to recalculate.\033[0m")
          p_sf_in <- p_sf_in |> sf::st_transform(st_crs(las))
       }
 
-      opt_output_filename(las) <- ""
+      opt_output_files(las) <- ""
+      message("## STARTING FUEL METRICS " )
       metrics      <- lidR::plot_metrics(las, ~compute_pixel_metrics(X,Y,Z),
                                           geometry=p_sf_in,
                                           radius= (getPixelArea(template)/pi)^0.5 )
