@@ -14,6 +14,8 @@ Required libraries are automatically checked for and installed if needed.
 
 The script is '***process.R***' in the R folder. Open process.R and to the end of the script change two lines as below:
 
+In linux it is strongly suggested to run as `Rscript process.R` as it takes advantage of the multicore functionality.
+
 ```{r}
 .....
 .....
