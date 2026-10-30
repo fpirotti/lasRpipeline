@@ -4,5 +4,6 @@
 ^data-raw$
 ^\.git
 ^logs$
-^prova
+^ignore
+^images
 ^README\.Rmd$

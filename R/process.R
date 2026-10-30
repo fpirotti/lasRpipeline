@@ -1,11 +1,13 @@
-# Authors: Francesco Pirotti, Shunjia Li
+# Authors: Francesco Pirotti, Shunjia Liu
 #
 # START =====
-# Forest Fire Metrics from LiDAR Point Cloud → 20m Raster Output
+# Forest Fire Metrics from LiDAR Point Cloud → 30m Raster Output
 # Metrics: height, slope, aspect, canopyCover, canopyHeight, CBH, CBD
 # Method: Beer-Lambert / PAD vertical profile (Martin-Ducup et al. 2025)
 
-pkgs <- c("terra", "stars", "patchwork", "tidyterra", "ggplot2", "lidR", "sf", "cli", "parallel",  "tools", "future", "data.table", "this.path")
+# Loading package
+pkgs <- c("terra", "stars", "patchwork", "tidyterra", "ggplot2", "lidR", "sf", "cli",
+          "parallel",  "tools", "future", "data.table", "this.path")
 for (p in pkgs) {
   if (!requireNamespace(p, quietly = TRUE)) {
     warning("Package \033[1m", p, "\033[0m not found... installing it.")
@@ -15,18 +17,16 @@ for (p in pkgs) {
   library(p, character.only = TRUE, quietly = TRUE)
 }
 
-
-log_file <- "parallel_log.txt"
-
+# Visual verification
 plot_vertical_profile <- function(X,Y,Z,
                                   CBH, CBD, CC,ladder_fuel_ratio, crr, z_skewness,
                                   binwidth = 1) {
   suppressMessages({
     suppressWarnings({
-     library(ggplot2)
-     library(tidyterra)
-     library(patchwork)
-   })
+      library(ggplot2)
+      library(tidyterra)
+      library(patchwork)
+    })
   })
 
   # Remove NAs
@@ -34,29 +34,25 @@ plot_vertical_profile <- function(X,Y,Z,
   df <- data.frame(Z = Z_clean)
 
   p1 <- ggplot(df, aes(x = Z)) +
-    geom_histogram(binwidth = binwidth,
+    ggplot2::geom_histogram(binwidth = binwidth,
                    fill = "seagreen4",
                    color = "white",
                    alpha = 0.8) +
-    geom_vline(xintercept = CBH, color = "red", linetype = "dashed", size = 1) +
-    coord_flip() +  # Flips the axes so Z is vertical
+    ggplot2::geom_vline(xintercept = CBH, color = "red", linetype = "dashed", size = 1) +
+    ggplot2::coord_flip() +  # Flips the axes so Z is vertical
     labs(title = "A. Vertical Canopy Profile",
          subtitle = "Point density distribution by height",
          x = "Height Above Ground (Z)",
          y = "Number of Returns") +
-    theme_classic(base_size = 14) +
-    theme(
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(
       panel.grid.minor = element_blank(),
       plot.title = element_text(face = "bold")
     )
 
-  rr <- range(Y)
-  dd <- diff(rr)
 
-  slice <- X> (mean(X)-2) & X<(mean(X)+2)
-
-  p2 <- ggplot() +
-    stat_summary_2d(aes(x = X, y = Y, z = Z), fun = max, bins = 60) +
+  p2 <- ggplot2::ggplot() +
+    stat_summary_2d(ggplot2::aes(x = X, y = Y, z = Z), fun = max, bins = 60) +
     scale_fill_viridis_c(
       option = "viridis",
       name = "Canopy\nHeight (m)",
@@ -65,49 +61,43 @@ plot_vertical_profile <- function(X,Y,Z,
       labels = function(x) paste0(x, "m") # Adds 'm' suffix to legend numbers
     ) +
 
-    coord_fixed() +
-    theme_classic(base_size = 14) +
+    ggplot2::coord_fixed() +
+    ggplot2::theme_classic(base_size = 14) +
     labs(title = "B. Canopy Height > 5 m", subtitle = "Copernicus HRL Forest layers Definition",
          x = "Coordinate X (m)", y = "Coordinate Y  (m)") +
-  theme(plot.title = element_text(face = "bold"))
+    ggplot2::theme(plot.title = element_text(face = "bold"))
 
-  p3 <- ggplot(  ) +
+  p3 <- ggplot2::ggplot(  ) +
     # Using ti  ny points and extreme transparency simulates density intuitively
-    geom_point(aes(x = X, y = Z), alpha = 0.05, size = 0.3, color = "darkgreen") +
-    geom_hline(yintercept = CBH, color = "red", linetype = "dashed", size = 1) +
-    scale_y_continuous(expand = c(0, 0)) + # Align ground to axis
-    labs(title = "C. Stand Side Profile", subtitle = "X vs Z Lidar Echoes",
+    ggplot2::geom_point(aes(x = X, y = Z), alpha = 0.05, size = 0.3, color = "darkgreen") +
+    ggplot2::geom_hline(yintercept = CBH, color = "red", linetype = "dashed", size = 1) +
+    ggplot2::scale_y_continuous(expand = c(0, 0)) + # Align ground to axis
+    ggplot2::labs(title = "C. Stand Side Profile", subtitle = "X vs Z Lidar Echoes",
          x = "Coordinate X (m)", y = "Height (m)") +
-    theme_classic(base_size = 14) +
-    theme(plot.title = element_text(face = "bold"))
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(plot.title = element_text(face = "bold"))
 
-  p4 <- ggplot(  ) +
+  p4 <- ggplot2::ggplot(  ) +
     # Using tiny points and extreme transparency simulates density intuitively
-    geom_point(aes(x =Y, y = Z), alpha = 0.05, size = 0.3, color = "darkgreen") +
-    geom_hline(yintercept = CBH, color = "red", linetype = "dashed", size = 1) +
-    scale_y_continuous(expand = c(0, 0)) + # Align ground to axis
-    labs(title = "D. Stand Side Profile", subtitle = "Y vs Z Lidar Echoes",
+    ggplot2::geom_point(aes(x =Y, y = Z), alpha = 0.05, size = 0.3, color = "darkgreen") +
+    ggplot2::geom_hline(yintercept = CBH, color = "red", linetype = "dashed", size = 1) +
+    ggplot2::scale_y_continuous(expand = c(0, 0)) + # Align ground to axis
+    ggplot2::labs(title = "D. Stand Side Profile", subtitle = "Y vs Z Lidar Echoes",
          x = "Coordinate Y (m)", y = "Height (m)") +
-    theme_classic(base_size = 14) +
-    theme(plot.title = element_text(face = "bold"))
+    ggplot2::theme_classic(base_size = 14) +
+    ggplot2::theme(plot.title = element_text(face = "bold"))
 
   final_dashboard <- (p1 + p2) / (p3 + p4) +
-    plot_annotation(
+    patchwork::plot_annotation(
       title = "Forest Stand Metrics Summary",
       subtitle = sprintf("CBH=%.2f CBD=%.4f CC=%.0f%% Ladder Fuel Ratio=%.3f Canopy Relief Ratio=%.3f Vertical Skewness=%.3f", CBH, CBD, CC, ladder_fuel_ratio, crr, z_skewness),
       theme = theme(plot.title = element_text(size = 20, face = "bold"))
     )
-
-  ggsave(file.path(plotdir, sprintf("metricsPlot_%.0f_%.0f_v3.png",   mean(X), mean(Y) ) ), final_dashboard,
-         width = 12, height = 12, dpi = 200)
   # --- Export as high-res PNG ---
 
 
-}
-
-getPixelArea <- function(x){
-  pixel_area <- abs(res(x)[[1]] * res(x)[[2]])
-  pixel_area
+  ggsave(file.path(plotdir, sprintf("metricsPlot_%.0f_%.0f_v3.png", mean(X), mean(Y) ) ), final_dashboard,
+         width = 12, height = 12, dpi = 200)
 }
 #' checkVRTvalidity
 #'
@@ -139,7 +129,7 @@ checkVRTvalidity <- function(filevrt){
 
   if(length(warns )!=0){
     message_log("Problem with VRT file ", filevrt,
-                ", please remove it before continuing or figure out what is wrong with it\n",
+                             ", please remove it before continuing or figure out what is wrong with it\n",
                 paste(warns , collapse="\n<br>\n"),isWarning = T)
     return(FALSE)
   }
@@ -158,7 +148,6 @@ layer_depth  <- 1.0       # vertical slice thickness (m)
 G_theta      <- 0.5       # leaf projection ratio (spherical assumption)
 omega        <- 0.77      # clumping index (Martin-Ducup et al. 2025)
 FMA          <- 0.25      # Fuel Mass Area kg/m²
-BD_threshold <- 0.02      # bulk density threshold for CBH (kg/m³)
 
 # A. FUNCTION: compute canopy metrics for a single  pixel  ########
 plotCellMetrics <- TRUE
@@ -167,8 +156,7 @@ compute_pixel_metrics <- function(X, Y, Z,
                                   layer_depth = 1.0,
                                   G_theta = 0.5,
                                   omega = 0.77,
-                                  FMA = 0.25,
-                                  BD_threshold = 0.02 ) { # Added plotdir to arguments
+                                  FMA = 0.25) { # Added plotdir to arguments
 
   # 0. Initialize Output Metrics ----
   CBH <- NA_real_
@@ -208,7 +196,7 @@ compute_pixel_metrics <- function(X, Y, Z,
     Z <- Z[keep_idx]
   }
 
-  # A. Ladder Fuel Ratio (Proportion of points between 1m and 4m)
+  # a. Ladder Fuel Ratio (Proportion of points between 1m and 4m)
   pts_above_1m <- sum(Z > 1.0, na.rm = TRUE)
   if (pts_above_1m > 10) {
     ladder_fuel_ratio <- sum(Z > 1.0 & Z <= 4.0, na.rm = TRUE) / pts_above_1m
@@ -216,7 +204,7 @@ compute_pixel_metrics <- function(X, Y, Z,
     ladder_fuel_ratio <- 0
   }
 
-  # B. Canopy Relief Ratio (CRR) and Z-Skewness (Focusing on vegetation > 2m)
+  # b. Canopy Relief Ratio (CRR) and Z-Skewness (Focusing on vegetation > 2m)
   Z_veg <- Z[Z > 2.0]
   n_veg <- length(Z_veg)
 
@@ -262,7 +250,7 @@ compute_pixel_metrics <- function(X, Y, Z,
     N_per_layer <- tabulate(layer_ids, nbins = n_layers)
     heights <- breaks[-length(breaks)] + (layer_depth / 2)
 
-    ## A. Canopy Base Height (CBH) Logic ----
+    ## a. Canopy Base Height (CBH) Logic ----
     valid_layers <- heights >= 1.0
     N_sub <- N_per_layer[valid_layers]
     H_sub <- heights[valid_layers]
@@ -274,8 +262,8 @@ compute_pixel_metrics <- function(X, Y, Z,
         target_val <- 0.15 * peak_val
         cbh_idx <- which(N_sub >= target_val)[1]
 
+        # Interpolate fine-scale CBH
         if (!is.na(cbh_idx)) {
-          # Interpolate fine-scale CBH
           if (cbh_idx > 1) {
             count_prev <- N_sub[cbh_idx - 1]
             count_curr <- N_sub[cbh_idx]
@@ -291,7 +279,7 @@ compute_pixel_metrics <- function(X, Y, Z,
       }
     }
 
-    ## B. Canopy Bulk Density (CBD) Logic (IMPROVED) ----
+    ## b. Canopy Bulk Density (CBD) Logic (IMPROVED) ----
     # Top-down cumulative sum of points (how many pulses successfully reach this layer)
     N_cum <- rev(cumsum(rev(N_per_layer)))
 
@@ -348,16 +336,15 @@ compute_pixel_metrics <- function(X, Y, Z,
 
 #' process_plot
 #'
-#' @param las_folder the folder with
+#' @param las_folder Path to folder containing LAS/LAZ tiles for one plot
 #' @param template a raster defining the output  grid or NULL or FALSE
 #' @param force re-computes all intermediate steps!
-#' @param plotOut create some nice plots
-#'
 #' @returns a DTM in tiles with a VRT file, normalized LAZ files and metrics
 #' @export
 #'
-#' @examples
-process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) {
+process_plot <- function(las_folder, template=NULL, force=FALSE ) {
+
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
 
   pathtemplate <- template
   if(!exists("res")) {
@@ -384,13 +371,14 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
     }
   }
 
-#   if (file.exists(out_file) && !force) {
-#     message( "\033[32mSkipping (already done): ", plot_name, "
-# ...results available in:
-# ", file.path(getwd(), out_file) , ".
-# Remove or use force=TRUE if you want to recalculate.\033[0m")
-#     return(invisible(NULL))
-#   }
+  # Skipping logic moved to post-metrics section below
+  #   if (file.exists(out_file) && !force) {
+  #     message( "\033[32mSkipping (already done): ", plot_name, "
+  # ...results available in:
+  # ", file.path(getwd(), out_file) , ".
+  # Remove or use force=TRUE if you want to recalculate.\033[0m")
+  #     return(invisible(NULL))
+  #   }
 
   message("Processing: ", plot_name)
 
@@ -403,11 +391,22 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
   )
   if (is.null(ctg_local)) return(invisible(NULL))
 
+  # --- Set CRS for EagleFVG ALS data ---
+  sf::st_crs(ctg_local) <- "EPSG:7792"
+
+  # --- Check CRS ---
+  message("LAS CRS: ", sf::st_crs(ctg_local)$input)
+
+  if (isTRUE(st_is_longlat(st_crs(ctg_local)))) {
+    message("LAS is in geographic coordinates...")
+    return(invisible(NULL))
+  }
+
+
   if (isTRUE(st_is_longlat(st_crs(ctg_local)))) {
     message("LAS is in geographic coordinates (lat/long) — not suitable - please provide projected points (work in progress for automatic conversion).")
     return(invisible(NULL))
   }
-
 
   cores <- min(80, ceiling(abs(future::availableCores()/2-1)), nrow(ctg_local@data))
 
@@ -434,8 +433,8 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
       rasterize_terrain(ctg_local, res = resDTM, algorithm =  tin()),
       error = function(e) { message("  DTM create error: ", e$message); return(NULL) }
     )
-     # terra::vrt(list.files(tmpFolders$tmp_Folder_DTMs, full.names = T),
-     #            filename=dtm)
+    # terra::vrt(list.files(tmpFolders$tmp_Folder_DTMs, full.names = T),
+    #            filename=dtm)
     dtm <- file.path(tmpFolders$tmp_Folder_DTMs, "rasterize_terrain.vrt")
   } else {
     message("##### DTM already available! ...")
@@ -460,28 +459,33 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
     opt_laz_compression(ctg_local) <- TRUE
     las <- tryCatch(
       normalize_height(ctg_local, algorithm = tin(),
-                       dtm = dtm), #algorithm = knnidw() ),
+                       dtm = dtm),
       error = function(e) { message("  Normalization error: ", e$message); return(NULL) }
     )
     if (is.null(las)) {
       return(invisible(NULL))
     }
     message("#### adding index ...")
-    gg <- mclapply(las@data$filename, function(f) {
+   # gg <- mclapply(las@data$filename, function(f) {
+   #   rlas::writelax(f)
+   # }, mc.cores =  cores)
+
+    gg <- lapply(las@data$filename, function(f) {
       rlas::writelax(f)
-    }, mc.cores =  cores)
+    })
+
+
   } else {
     message("#### Normalization already available! ...")
   }
 
-  # --- Canopy metrics at 20m ----
-  # writeLines("Log started...", log_file)
-
+  # --- Spatial Alignment with Reference Raster Template ----
   metrics <- list.files(pattern=".*\\.vrt$", tmpFolders$tmp_Folder_Metrics, full.names = T)
 
   if(length(metrics)==0) {
     message("Metrics NOT found - creating ...")
-    filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
+    unlink(list.files(tmpFolders$tmp_Folder_Metrics, full.names = TRUE))
+     filter <- "-drop_z_below 0 -drop_z_above 60 -keep_class 2 3 4 5 9 11"
     opt_filter(las) <- filter
     opt_output_files(las) <- paste0( tmpFolders$tmp_Folder_Metrics , "/z{*}_Met")
 
@@ -507,37 +511,72 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
       dev.off()
 
       pp <- file.path(getwd(), "extents.png")
-       cli_inform(
+      cli::cli_inform(
         col_green(" ### plotted extents to file you can see it in {.run [{pp}](utils::browseURL('{pp}'))}")
-        )
+      )
 
 
-       if( st_area(extsRast) > st_area(extsLAS) ) {
-         clipped <- sprintf("%s_clipped.tif", file.path(
-           dirname(pathtemplate),
-            tools::file_path_sans_ext(
-              basename(pathtemplate)    )
-                            ) )
-         cli_inform("Area of raster bigger so we clip it - you can find clipped version in {.run [{clipped}](utils::browseURL('{clipped}'))} ")
-         template  <- terra::crop(template, extsLAS)
-         # writeRaster(template, clipped, overwrite=T )
-         # plot(template )
-       }
+      if( st_area(extsRast) > st_area(extsLAS) ) {
+        clipped <- sprintf("%s_clipped.tif", file.path(
+          dirname(pathtemplate),
+          tools::file_path_sans_ext(
+            basename(pathtemplate)    )
+        ) )
+        cli::cli_inform("Area of raster bigger so we clip it - you can find clipped version in {.run [{clipped}](utils::browseURL('{clipped}'))} ")
+        template  <- terra::crop(template, extsLAS)
+        # writeRaster(template, clipped, overwrite=T )
+        # plot(template )
+      }
 
-      template <- terra::project(template, crsLAS$Wkt)
+      #template <- terra::project(template, crsLAS$Wkt)
+      template <- terra::project(
+        template,
+        crsLAS$Wkt,
+        res = 30
+      )
       opt_select(las)      <- "xyz"
       # opt_chunk_size(las)   <- 0
       # opt_chunk_buffer(las) <- 0
       opt_progress(las)     <- TRUE # Watch the progress bar jump!
 
-      message("## STARTING FUEL METRICS " )
+      message("## STARTING FUEL METRICS ")
       p1 <- Sys.time()
       message(p1)
-     # plan(sequential)
 
-      metrics <-   lidR::pixel_metrics(las,
-                                   func = ~compute_pixel_metrics(X,Y,Z),
-                                   grid=stars::st_as_stars(template))
+      message("===== BEFORE pixel_metrics =====")
+      message("Template resolution:")
+      print(terra::res(template))
+      message("Template CRS:")
+      print(terra::crs(template))
+      message("Template extent:")
+      print(terra::ext(template))
+      message("LAS CRS:")
+      print(lidR::crs(las))
+      message("LAS extent:")
+      print(lidR::ext(las))
+
+      metrics <- lidR::pixel_metrics(
+        las,
+        func  = ~compute_pixel_metrics(X, Y, Z),
+        res   = terra::res(template)[1],
+        start = c(terra::xmin(template), terra::ymin(template))
+      )
+
+      message("===== AFTER pixel_metrics =====")
+
+      metrics_check <- terra::rast(metrics)
+
+      message("Metrics resolution:")
+      print(terra::res(metrics_check))
+
+      message("Metrics CRS:")
+      print(terra::crs(metrics_check))
+
+      message("Metrics extent:")
+      print(terra::ext(metrics_check))
+
+
+
 
       p2 <- Sys.time()
       message(p2)
@@ -550,12 +589,12 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
   if(is.character(metrics)) metrics  <- terra::rast(metrics)
 
   names(metrics) <- c("canopyCover" ,
-  "canopyHeight",
-  "CBH"       ,
-  "CBD"    ,
-  "ladderFuelRatio"  ,
-  "CRR"     ,
-  "z_skewness"  )
+                      "canopyHeight",
+                      "CBH"       ,
+                      "CBD"    ,
+                      "ladderFuelRatio"  ,
+                      "CRR"     ,
+                      "z_skewness"  )
 
   if(!checkVRTvalidity(metrics)){
     stop()
@@ -563,18 +602,19 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
 
 
 
-    if (file.exists(out_file) && !force) {
-      message( "\033[32mMetrics already done:   ...results available in:
+  if (file.exists(out_file) && !force) {
+    message( "\033[32mMetrics already done:   ...results available in:
   ", file.path(getwd(), out_file) , ".
   Remove or use force=TRUE if you want to recalculate.\033[0m")
 
-    }
+  }
 
   message("  convert metrics result to terra raster ")
   ## convert metrics result to terra raster
   if(is.character(metrics)) metrics_rast <- terra::rast(metrics)
   else metrics_rast <- metrics
-
+  message("===== CHECK 1: metrics_rast =====")
+  print(terra::res(metrics_rast))
 
   # --- Assemble all bands ---
   if (!is.null(dtm)) {
@@ -586,16 +626,18 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
     aspect_r <- resample(aspect_r, metrics_rast, method = "bilinear")
 
     out_rast        <- c(dtm_r, slope_r, aspect_r, metrics_rast)
+    message("===== CHECK 2: out_rast before final project =====")
+    print(terra::res(out_rast))
     names(out_rast) <-  c("height", "slope", "aspect", "canopyCover" ,
-         "canopyHeight",
-         "CBH"       ,
-         "CBD"    ,
-         "ladderFuelRatio"  ,
-         "CRR"     ,
-         "z_skewness"  )
+                          "canopyHeight",
+                          "CBH"       ,
+                          "CBD"    ,
+                          "ladderFuelRatio"  ,
+                          "CRR"     ,
+                          "z_skewness"  )
 
   } else {
-    message("  DTM unavailable, saving 4 canopy bands only...")
+    message("  DTM unavailable, saving 7 canopy bands only...")
     out_rast        <- metrics_rast
     names(out_rast) <- c("canopyCover", "canopyHeight", "CBH", "CBD"  ,
                          "ladderFuelRatio"  ,
@@ -609,8 +651,22 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
     message( "\033[32mSaved to file: ", file.path(getwd(), out_file) , "\033[0m")
   } else {
     message("TRANSFORMING COORDINATES ")
-    out_rast <- terra::project(out_rast, terra::crs(terra::rast(pathtemplate) ) )
-    message("  Bands: ", nlyr(out_rast), " → ", paste(names(out_rast), collapse = ", "))
+   ## out_rast <- terra::project(out_rast, terra::crs(terra::rast(pathtemplate) ) )
+    target_template <- terra::rast(pathtemplate)
+
+    message("===== CHECK 3: target template =====")
+    print(terra::res(target_template))
+
+    out_rast <- terra::project(
+      out_rast,
+      target_template
+    )
+
+    message("===== CHECK 4: out_rast after final project =====")
+    print(terra::res(out_rast))
+
+
+     message("  Bands: ", nlyr(out_rast), " → ", paste(names(out_rast), collapse = ", "))
     writeRaster(out_rast, out_file, overwrite = TRUE)
     message( "\033[32mSaved to file: ", file.path(getwd(), out_file) , "\033[0m")
   }
@@ -619,14 +675,18 @@ process_plot <- function(las_folder, template=NULL, force=FALSE, plotOut=FALSE) 
 
 # C. RUN -----
 ## parameters -----
-plotdir= "/mnt/archivioVSIX/tmp/wildfire/"
+# plotdir= "D:/wildfire/out_put_at3"
+#
+# las_folder <- "D:/wildfire/out_put_at3"
+# wd <- getwd()
+# setwd(las_folder)
+# ## this below in case we have a raster to use as template
+# ## NB CRS should be the same as LAS!
+# template <- "D:/wildfire/CE/pilotRegions_AT-IT-SI_canopy_canopyCover.tif"
+# process_plot("D:/wildfire/input/download-20261006095108560", template = template,force = F )
+# setwd(wd)
+#
+# terra::res(terra::rast(template))
 
-las_folder <- "/archivio/shared/geodati/las/fvg/tarvisio/"
-wd <- getwd()
-setwd(las_folder)
-## this below in case we have a raster to use as template
-## NB CRS should be the same as LAS!
-template <- "/archivio/shared/geodati/raster/wildfire/pilotRegions_AT-IT-SI_canopy_canopyBaseHeight.tif"
-process_plot("/archivio/shared/geodati/las/fvg/tarvisio/", template = template,force = F )
-setwd(wd)
+
 
